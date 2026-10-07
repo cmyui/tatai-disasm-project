@@ -120,7 +120,9 @@ input start, and prefetches 512 bytes ahead. The slider path decodes only the
 hitsound field length where its numeric value is unused. Assembly-time branch
 padding keeps branches within 32-byte boundaries; this tuning targets the i7-8700.
 The positive slider path consumes lookup metadata directly. Five- and six-digit
-object routines use the shared register context above.
+object routines use the shared register context above. The five-digit loop keeps
+both shuffle-table bases in registers and advances its deferral cursor directly;
+its fast path returns to the loop head with one conditional branch.
 
 Input buffers still require the original readable tail padding for SIMD loads.
 The aligned scanner may read up to 31 bytes before the input pointer, within its

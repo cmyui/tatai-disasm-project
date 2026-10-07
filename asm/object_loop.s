@@ -203,6 +203,7 @@ parse_objects_5digit_context:
 	je	.Lparse_objects_5digit_context_block_14
 	vmovdqa	xmm4, XMMWORD PTR constant_2[rip]
 	lea	r13, object_5_coordinate_shuffles[rip]
+	lea	rsi, object_5_header_shuffles[rip]
 	vmovdqa	xmm3, XMMWORD PTR constant_3[rip]
 	vmovdqa	xmm2, XMMWORD PTR constant_5[rip]
 	vmovdqa	xmm5, XMMWORD PTR constant_6[rip]
@@ -222,17 +223,15 @@ parse_objects_5digit_context:
 	mov	r11d, eax
 	movzx	r9d, WORD PTR [r13+rdx]
 	shr	r11d, 8
-	mov	esi, r9d
+	mov	r8d, r9d
 	vpaddb	xmm0, xmm0, xmm8
 	movzx	edx, r9b
-	shr	esi, 8
-	mov	r8d, esi
+	shr	r8d, 8
 	test	r11d, r10d
 	je	.Lparse_objects_5digit_context_block_11
 .Lparse_objects_5digit_context_block_2:
-	lea	r10, object_5_header_shuffles[rip]
 	vpmovmskb	r9d, xmm0
-	vpshufb	xmm0, xmm0, XMMWORD PTR [r10+r8*8]
+	vpshufb	xmm0, xmm0, XMMWORD PTR [rsi+r8*8]
 	andn	r9d, eax, r9d
 	vpmaddubsw	xmm0, xmm0, xmm4
 	vpmaddwd	xmm0, xmm0, xmm3
@@ -248,21 +247,18 @@ parse_objects_5digit_context:
 	cmp	edx, 2
 	jbe	.Lparse_objects_5digit_context_block_7
 	mov	eax, DWORD PTR 12[r15]
-	mov	rcx, r12
 	add	rbp, 8
 	add	rdx, rbx
 	mov	rbx, QWORD PTR [rbp]
 	sal	eax, 3
-	mov	QWORD PTR [rcx], rdx
+	mov	QWORD PTR [r12], rdx
 	and	eax, 16
-	mov	QWORD PTR 8[rcx], r14
-	add	rcx, rax
-	mov	r12, rcx
+	mov	QWORD PTR 8[r12], r14
+	add	r12, rax
 	add	r15, 16
 	add	r14, 32
 	test	rbx, rbx
-	je	.Lparse_objects_5digit_context_block_5
-	jmp	.Lparse_objects_5digit_context_block_1
+	jne	.Lparse_objects_5digit_context_block_1
 	.p2align 4,,10
 	.p2align 3
 .Lparse_objects_5digit_context_block_5:
@@ -278,14 +274,12 @@ parse_objects_5digit_context:
 	add	rbp, 8
 	call	defer_object_header
 	mov	eax, DWORD PTR 12[r15]
-	mov	rsi, r12
 	sal	eax, 3
-	mov	QWORD PTR [rsi], rbx
+	mov	QWORD PTR [r12], rbx
 	mov	rbx, QWORD PTR [rbp]
 	and	eax, 16
-	mov	QWORD PTR 8[rsi], r14
-	add	rsi, rax
-	mov	r12, rsi
+	mov	QWORD PTR 8[r12], r14
+	add	r12, rax
 	add	r15, 16
 	add	r14, 32
 	test	rbx, rbx
@@ -377,12 +371,11 @@ parse_objects_6digit_context:
 	lea	eax, 54[r11]
 	movzx	eax, WORD PTR [r13+rax]
 	vpaddb	xmm0, xmm0, xmm8
-	mov	r8d, eax
-	shr	r8d, 8
+	mov	r10d, eax
+	shr	r10d, 8
 	movzx	edx, al
 	movzx	eax, al
 	cmp	BYTE PTR -1[rbx+rax], 44
-	mov	r10d, r8d
 	jne	.Lparse_objects_6digit_context_block_12
 .Lparse_objects_6digit_context_block_2:
 	vpmovmskb	eax, xmm0
