@@ -208,11 +208,21 @@ parse_objects_5digit:
 	.seh_pushreg	rsi
 	push	rbx
 	.seh_pushreg	rbx
-	sub	rsp, 72
-	.seh_stackalloc	72
+	sub	rsp, 104
+	.seh_stackalloc	104
 	vmovaps	XMMWORD PTR 48[rsp], xmm6
 	.seh_savexmm	xmm6, 48
+	vmovaps	XMMWORD PTR 64[rsp], xmm7
+	.seh_savexmm	xmm7, 64
+	vmovaps	XMMWORD PTR 80[rsp], xmm8
+	.seh_savexmm	xmm8, 80
 	.seh_endprologue
+	mov	eax, 741092396
+	vmovd	xmm7, eax
+	vpbroadcastd	xmm7, xmm7
+	mov	eax, -791621424
+	vmovd	xmm8, eax
+	vpbroadcastd	xmm8, xmm8
 	mov	r15, QWORD PTR [rcx]
 	mov	rsi, rcx
 	mov	rbp, rdx
@@ -231,11 +241,8 @@ parse_objects_5digit:
 	.p2align 4,,10
 	.p2align 3
 .Lparse_objects_5digit_block_1:
-	mov	eax, 741092396
 	vmovdqu	xmm0, XMMWORD PTR [r15]
-	vmovd	xmm1, eax
-	vpbroadcastd	xmm1, xmm1
-	vpcmpeqb	xmm1, xmm0, xmm1
+	vpcmpeqb	xmm1, xmm0, xmm7
 	vpmovmskb	eax, xmm1
 	movzx	ecx, al
 	mov	edx, ecx
@@ -243,15 +250,12 @@ parse_objects_5digit:
 	test	edx, eax
 	je	.Lparse_objects_5digit_block_5
 	lea	edx, 54[rcx]
-	mov	ebx, -791621424
 	lea	r10d, -1[rcx]
 	mov	r11d, eax
 	movzx	r9d, WORD PTR [r14+rdx]
-	vmovd	xmm1, ebx
 	shr	r11d, 8
-	vpbroadcastd	xmm1, xmm1
 	mov	ebx, r9d
-	vpaddb	xmm0, xmm0, xmm1
+	vpaddb	xmm0, xmm0, xmm8
 	movzx	edx, r9b
 	movzx	ebx, bh
 	mov	r8d, ebx
@@ -303,7 +307,9 @@ parse_objects_5digit:
 	or	rax, rdi
 .Lparse_objects_5digit_block_6:
 	vmovaps	xmm6, XMMWORD PTR 48[rsp]
-	add	rsp, 72
+	vmovaps	xmm7, XMMWORD PTR 64[rsp]
+	vmovaps	xmm8, XMMWORD PTR 80[rsp]
+	add	rsp, 104
 	pop	rbx
 	pop	rsi
 	pop	rdi
@@ -415,11 +421,21 @@ parse_objects_6digit:
 	.seh_pushreg	rsi
 	push	rbx
 	.seh_pushreg	rbx
-	sub	rsp, 56
-	.seh_stackalloc	56
+	sub	rsp, 88
+	.seh_stackalloc	88
 	vmovaps	XMMWORD PTR 32[rsp], xmm6
 	.seh_savexmm	xmm6, 32
+	vmovaps	XMMWORD PTR 48[rsp], xmm7
+	.seh_savexmm	xmm7, 48
+	vmovaps	XMMWORD PTR 64[rsp], xmm8
+	.seh_savexmm	xmm8, 64
 	.seh_endprologue
+	mov	eax, 741092396
+	vmovd	xmm7, eax
+	vpbroadcastd	xmm7, xmm7
+	mov	eax, -791621424
+	vmovd	xmm8, eax
+	vpbroadcastd	xmm8, xmm8
 	mov	r13, QWORD PTR [rcx]
 	mov	r15, rcx
 	mov	rsi, rdx
@@ -437,12 +453,9 @@ parse_objects_6digit:
 	.p2align 4,,10
 	.p2align 3
 .Lparse_objects_6digit_block_1:
-	mov	eax, -791621424
-	vmovd	xmm1, eax
 	lea	eax, 54[r11]
 	movzx	eax, WORD PTR [r12+rax]
-	vpbroadcastd	xmm1, xmm1
-	vpaddb	xmm0, xmm0, xmm1
+	vpaddb	xmm0, xmm0, xmm8
 	movzx	ebp, ah
 	movzx	edx, al
 	movzx	eax, al
@@ -482,11 +495,8 @@ parse_objects_6digit:
 	test	r13, r13
 	je	.Lparse_objects_6digit_block_7
 .Lparse_objects_6digit_block_6:
-	mov	eax, 741092396
 	vmovdqu	xmm0, XMMWORD PTR 0[r13]
-	vmovd	xmm1, eax
-	vpbroadcastd	xmm1, xmm1
-	vpcmpeqb	xmm1, xmm0, xmm1
+	vpcmpeqb	xmm1, xmm0, xmm7
 	vpmovmskb	ecx, xmm1
 	movzx	r11d, cl
 	mov	eax, r11d
@@ -503,7 +513,9 @@ parse_objects_6digit:
 	or	rax, rdi
 .Lparse_objects_6digit_block_8:
 	vmovaps	xmm6, XMMWORD PTR 32[rsp]
-	add	rsp, 56
+	vmovaps	xmm7, XMMWORD PTR 48[rsp]
+	vmovaps	xmm8, XMMWORD PTR 64[rsp]
+	add	rsp, 88
 	pop	rbx
 	pop	rsi
 	pop	rdi
