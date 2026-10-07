@@ -162,6 +162,31 @@ int main(int argc,char **argv) {
                    <<" prefix="<<prefix<<"\n";return 4;
         }
     }
+  // Decimal pairs keep the reference's exact integer-to-double rounding.
+  // Cover every digit/dot position visible to the 16-byte decoder, including
+  // leading zeroes, maximum four-digit intermediates, and long input.
+  std::vector<std::string> lengths={"0","1","9007199254740991","9007199254740992",
+    "9007199254740993","9999999999999999","10000000000000000",
+    "0.000000000000001","99999999.99999999"};
+  for(unsigned digits=1;digits<=17;++digits)for(unsigned pattern=0;pattern<3;++pattern) {
+    std::string value(digits,pattern==0?'0':'9');
+    if(pattern==2)for(unsigned i=0;i<digits;++i)value[i]='0'+((i*7+3)%10);
+    lengths.push_back(value);
+    for(unsigned dot=0;dot<=digits;++dot) {
+      auto decimal=value;decimal.insert(dot,1,'.');lengths.push_back(decimal);
+    }
+  }
+  for(size_t i=0;i<lengths.size();++i) {
+    auto input=header;
+    for(const auto &length : {lengths[i],lengths[lengths.size()-1-i],
+                              lengths[i],std::string("100.25"),lengths[i]})
+      input+="256,192,600000,2,0,B|300:200,1,"+length+"\n";
+    for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+      if(!guarded(verify,input,offset,tail)) {
+        std::cerr<<"decimal pair mismatch: "<<lengths[i]<<" offset="<<offset
+                 <<" tail="<<tail<<"\n";return 4;
+      }
+  }
   // Dense masks, empty masks, long gaps, and transitions at SIMD boundaries.
   for(unsigned gap: {0u,1u,31u,32u,63u,64u,65u,127u,128u,511u,512u,4096u}) {
     auto input=header;

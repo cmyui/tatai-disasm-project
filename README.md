@@ -97,6 +97,15 @@ to a general parser. Decimal conversion uses SIMD multiply/add stages and a powe
 of ten. The allocator reserves aligned address regions so fallback routines can
 recover the owning parser state from an output pointer.
 
+Paired slider lengths classify and shuffle each input independently, then use
+one AVX2 lane per decimal for digit reduction and 64-bit integer reconstruction.
+The unsigned product of the leading eight digits by 100,000,000 and addition of
+the trailing eight digits remain in SIMD registers. Each result then uses the
+reference's signed integer-to-double conversion and scalar power-of-ten multiply,
+preserving its exact rounding. Odd tails and deferred sliders retain their
+existing decimal paths. XMM10 already has a save slot in the outer frame and
+holds the reconstruction multiplier; the pair path needs no extra stack space.
+
 ## Toolchain and source regeneration
 
 MinGW-w64 GCC 16.2.0 (`x86_64-w64-mingw32-g++`) runs on this Mac. Source generation
@@ -192,7 +201,8 @@ continuations and four-digit fallback shapes. Paired-header cases cover all
 one- through four-digit coordinate-width combinations, circle/slider ordering,
 all 256 type values, odd tails, signed fallbacks and timestamp-width transitions
 in either pairing position. An optional second argument limits the corpus for a
-quick check; zero selects all maps.
+quick check; zero selects all maps. Decimal-pair cases cover digit and decimal-point
+positions, leading zeroes, 16-byte truncation, values around 2^53, and odd tails.
 The resolved reference revision is recorded in `build/reference/revision.txt`.
 
 To time both revisions in the same process after verifying their output, add a
