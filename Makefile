@@ -41,6 +41,12 @@ build/verify_harness.o: tools/verify.cpp tools/parser_output.h tools/parser_layo
 	mkdir -p build
 	$(CXX) -std=c++20 -O3 -march=skylake -c $< -o $@
 
-verify: build/verify_harness.o $(PARSER_OBJECTS)
+build/audit_call.o: tools/audit_call.s
+	$(CXX) -c $< -o $@
+
+verify: build/verify_harness.o build/audit_call.o $(PARSER_OBJECTS)
 	python3 tools/build_reference.py $(REFERENCE_REF)
-	$(CXX) build/verify_harness.o $(PARSER_OBJECTS) build/reference/*.o -static -o build/verify.exe -lonecore
+	$(CXX) build/verify_harness.o build/audit_call.o $(PARSER_OBJECTS) build/reference/*.o -static -o build/verify.exe -lonecore
+
+build/classify.exe: tools/classify.cpp tools/build_classifier.py tools/parser_layout.h $(MODULES)
+	python3 tools/build_classifier.py

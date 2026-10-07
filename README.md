@@ -214,3 +214,39 @@ corpus limit and `--benchmark`:
 
 This pins one core, alternates reference/candidate order and reports 31 paired
 passes in nanoseconds per map. Exclude pass zero when summarizing timings.
+
+## Reproducible sweep measurements
+
+`make build/classify.exe` builds an **untimed**, instrumented corpus inventory.
+Run it with the map directory and redirect stdout to a CSV. Each row records the
+file SHA-256, size, format version, timestamp widths, slider/decimal shapes, and
+actual fallback/negative-helper call counts. Timed binaries omit these counters.
+
+`make verify REFERENCE_REF=<revision>` builds the reference allocator and output
+serializer against that revision's own layout in a separate namespace. The
+initial assembly revision predates the harness and uses the unchanged layout
+snapshot from `1dacd0f`. Keep this independent when changing candidate layouts.
+
+The verifier accepts `MAPS LIMIT --benchmark natural` or `varied` (the default).
+Guard tests always cover all alignments. `TATAI_MAP_LIST` optionally names a UTF-8
+file containing one corpus filename per line; selection occurs before timing.
+
+```sh
+python3 tools/sweep.py --name UNIQUE --exe build/verify.exe --reference REF \
+  --manifest MANIFEST.csv --limit 0 --runs 2
+```
+
+The runner transfers
+the binary to `ssh windows`, selects the requested cohort, serializes measurements
+with a host mutex, and retains logs and provenance in `build/sweep/UNIQUE`.
+Use `--alignment varied` for alignment stress and `--cohort` to select a targeted
+category. Full-corpus acceptance uses two independent launches; each has 31
+alternating passes of four repetitions, with pass zero excluded. Checksums are
+read after the timed region, so differing output layouts add no timed adapters.
+Experiment outcomes and rejected hypotheses are recorded in `experiments/sweep.md`.
+
+Untimed verification checks every Windows nonvolatile GPR and XMM register around
+both parser entry points. The probe has its own Windows unwind metadata. Timing
+cases cover duplicate suppression, inheritance, signed times and format versions.
+The cohort names `timing-v14` and `timing-legacy` follow assembly dispatch:
+respectively versions <=7 and >7, despite the historical function names.

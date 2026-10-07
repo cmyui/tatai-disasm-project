@@ -6,23 +6,30 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include <cstdlib>
 #include "parser_output.h"
 
 extern "C" _memory_region_new *memory_region_create(u32);
-extern "C" void parse_beatmap(_memory_region_header *, const char *, const char *);
-extern "C" void reference_parse_beatmap(_memory_region_header *, const char *, const char *);
+extern "C" void parse_beatmap(void *, const char *, const char *);
+extern "C" void reference_parse_beatmap(void *, const char *, const char *);
+extern "C" void *reference_create();
+extern "C" u32 reference_count(void *);
+std::string reference_serialize(void *);
+extern "C" uint64_t audit_parser_call(void *,const char *,const char *,void (*)(void *,const char *,const char *));
 
 struct Verify {
   _memory_region_new *memory = memory_region_create(0);
-  _memory_region_new *reference_memory = memory_region_create(0);
+  void *reference_memory = reference_create();
   size_t checked = 0;
   bool map(const char *start, const char *end) {
-    std::ostringstream reference, candidate;
-    Output ref(reference), out(candidate);
-    reference_parse_beatmap(&reference_memory->header, start, end);ref.map(reference_memory->header);
-    parse_beatmap(&memory->header, start, end);out.map(memory->header);
+    std::ostringstream candidate;
+    Output out(candidate);
+    auto ref_abi=audit_parser_call(reference_memory,start,end,reference_parse_beatmap);
+    auto abi=audit_parser_call(&memory->header,start,end,parse_beatmap);
+    if(abi || ref_abi){std::cerr<<"ABI mismatch candidate="<<abi<<" reference="<<ref_abi<<"\n";return false;}
+    out.map(memory->header);
     ++checked;
-    auto ref_bytes=reference.str(),candidate_bytes=candidate.str();
+    auto ref_bytes=reference_serialize(reference_memory),candidate_bytes=candidate.str();
     if(ref_bytes!=candidate_bytes) {
       size_t first=0;
       while(first<ref_bytes.size() && first<candidate_bytes.size() && ref_bytes[first]==candidate_bytes[first])++first;
@@ -57,9 +64,10 @@ bool guarded(Verify &verify, const std::string &map, unsigned offset, bool tail)
 }
 
 int main(int argc,char **argv) {
-  if(argc<2){std::cerr<<"usage: verify.exe MAPS [LIMIT] [--benchmark]\n";return 2;}
+  if(argc<2){std::cerr<<"usage: verify.exe MAPS [LIMIT] [--benchmark] [natural|varied]\n";return 2;}
   Verify verify;if(!verify.memory || !verify.reference_memory)return 3;
   bool benchmark=argc>3 && std::string(argv[3])=="--benchmark";
+  bool natural=argc>4 && std::string(argv[4])=="natural";
   std::vector<std::vector<char>> maps;
   const std::string header="osu file format v14\n\n[General]\nAudioFilename: test.mp3\nMode: 0\n\n[Difficulty]\nCircleSize:5\nOverallDifficulty:5\nApproachRate:9\nSliderMultiplier:1.4\nSliderTickRate:1\n\n[TimingPoints]\n0,500,4,2,1,100,1,0\n\n[HitObjects]\n";
   // Force the six-digit object-header fallback, negative/single-point sliders,
@@ -187,6 +195,23 @@ int main(int argc,char **argv) {
                  <<" tail="<<tail<<"\n";return 4;
       }
   }
+  // Timing state: repeated values, inherited points before/after a base point,
+  // negative timestamps, signed/fractional beat lengths, and version semantics.
+  for(unsigned version : {7u,13u,14u,15u})for(unsigned seed=0;seed<32;++seed) {
+    auto input=header;input.replace(input.find("v14"),3,"v"+std::to_string(version));
+    const auto begin=input.find("0,500,");const auto end=input.find("[HitObjects]");
+    std::string timings;
+    for(unsigned i=0;i<24;++i) {
+      const char *values[]={"500","-100","-50.125","333.333333333333","0.0000000001","100","-100"};
+      timings+=std::to_string(int(i)*100-200)+","+values[(i+seed)%7]+",4,2,1,100,1,0\n";
+      if((i+seed)%3==0)timings+=std::to_string(int(i)*100-200)+","+values[(i+seed)%7]+",4,2,1,100,1,0\n";
+    }
+    input.replace(begin,end-begin,timings+"\n");input+=objects[6];
+    for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+      if(!guarded(verify,input,offset,tail)) {
+        std::cerr<<"timing mismatch version="<<version<<" seed="<<seed<<"\n";return 4;
+      }
+  }
   // Dense masks, empty masks, long gaps, and transitions at SIMD boundaries.
   for(unsigned gap: {0u,1u,31u,32u,63u,64u,65u,127u,128u,511u,512u,4096u}) {
     auto input=header;
@@ -221,17 +246,26 @@ int main(int argc,char **argv) {
   const auto guarded_cases=verify.checked;
   std::vector<std::filesystem::path> paths;
   for(const auto &p:std::filesystem::directory_iterator(argv[1]))if(p.path().extension()==".osu")paths.push_back(p.path());
+  if(const char *list=std::getenv("TATAI_MAP_LIST")) {
+    std::ifstream in(list);if(!in)return 5;
+    std::vector<std::filesystem::path> selected;std::string name;
+    while(std::getline(in,name)) {
+      if(!name.empty() && name.back()=='\r')name.pop_back();
+      selected.push_back(std::filesystem::path(argv[1])/std::filesystem::path(std::u8string(name.begin(),name.end())));
+    }
+    paths=std::move(selected);
+  }
   std::sort(paths.begin(),paths.end());
   if(argc>2){auto limit=std::stoull(argv[2]);if(limit && paths.size()>limit)paths.resize(limit);}
   if(paths.empty())return 5;
   for(size_t i=0;i<paths.size();++i) {
     std::ifstream in(paths[i],std::ios::binary);if(!in)return 6;
     std::vector<char> bytes((std::istreambuf_iterator<char>(in)),{});
-    unsigned offset=i&31;
-    bytes.insert(bytes.begin(),32+offset,'\n');
-    size_t length=bytes.size()-32-offset;
+    unsigned offset=natural ? 0 : 32+(i&31);
+    bytes.insert(bytes.begin(),offset,'\n');
+    size_t length=bytes.size()-offset;
     bytes.push_back('\n');bytes.resize(bytes.size()+128);
-    if(!verify.map(bytes.data()+32+offset,bytes.data()+32+offset+length)) {
+    if(!verify.map(bytes.data()+offset,bytes.data()+offset+length)) {
       std::cerr<<"mismatch: "<<paths[i]<<"\n";return 7;
     }
     if(benchmark)maps.push_back(std::move(bytes));
@@ -246,14 +280,14 @@ int main(int argc,char **argv) {
       for(int round=0;round<2;++round) {
         int which=(pass+round)&1;
         auto fn=which ? parse_beatmap : reference_parse_beatmap;
-        auto *memory=which ? verify.memory : verify.reference_memory;
+        void *memory=which ? static_cast<void *>(&verify.memory->header) : verify.reference_memory;
         auto start=std::chrono::steady_clock::now();
         for(int repeat=0;repeat<4;++repeat)for(size_t i=0;i<maps.size();++i) {
           const auto &m=maps[i];
-          fn(&memory->header,m.data()+32+(i&31),m.data()+m.size()-129);
-          checksum+=memory->header.ELEM_COUNT[MEM_object_header];
+          fn(memory,m.data()+(natural ? 0 : 32+(i&31)),m.data()+m.size()-129);
         }
         times[which]=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-start).count()/(maps.size()*4);
+        checksum+=which ? verify.memory->header.ELEM_COUNT[MEM_object_header] : reference_count(memory);
       }
       std::cout<<"pass="<<pass<<" reference="<<times[0]<<" candidate="<<times[1]<<" ratio="<<times[1]/times[0]<<std::endl;
     }
