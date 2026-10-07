@@ -250,3 +250,75 @@ both parser entry points. The probe has its own Windows unwind metadata. Timing
 cases cover duplicate suppression, inheritance, signed times and format versions.
 The cohort names `timing-v14` and `timing-legacy` follow assembly dispatch:
 respectively versions <=7 and >7, despite the historical function names.
+
+### Storage lifetime and input contract
+
+The region header owns nine logical 512 MiB slots in an aligned reservation.
+Slot 0 contains the header. Slots 1–8 hold lines, object headers, object bodies,
+timing points, slider deferrals, anchors, object-error records and slider-error
+records, respectively. Commits grow in 512 KiB units and remain reusable between
+maps. The current parser preallocates conservative capacities from input length;
+this is part of parsing, not file loading.
+
+Header/timing consumers finish before the line slot becomes the bounded object
+refill buffer. Object headers, bodies, timing points and anchors remain live until
+the caller finishes consuming that map. Slider deferrals retain both input and
+output ownership; after point parsing, their input pointer is replaced by the
+length-field pointer. General-slider recovery still needs its error records until
+the final pass. These overlapping lifetimes prohibit treating all scratch/output
+regions as interchangeable. The next parse invalidates prior output ownership.
+
+Keep the input resident and unchanged throughout parsing. Supply 128 readable
+padding bytes after its logical end, including a terminating newline where the
+file does not contain one. The aligned initial scanner also requires the mapped
+32-byte block containing the first byte to be readable; it masks any prefix bytes.
+The guarded verifier checks both page boundaries and all 32 input offsets.
+Unsupported/malformed input is tested only where the reference has defined behavior;
+a reference crash is not an expected-output oracle.
+
+### Isolated experiments and allocation protocols
+
+```sh
+python3 tools/variants.py prefetch-1024 --source-ref 1dacd0f --reference 1dacd0f
+python3 tools/sweep.py --name example --exe build/variants/prefetch-1024/verify.exe \
+  --reference 1dacd0f --manifest MANIFEST.csv --limit 0 --runs 2
+```
+
+Recipes modify isolated assembly copies, never production files. `--source-ref`
+fixes their input revision independently of the checkout. The runner records the
+executable, assembly, recipe and harness hashes, exact flags, corpus manifest and
+selection hashes, raw samples and serialized-output/ABI results. Actual input
+alignment histograms are emitted by the verifier. Natural allocator alignment and
+`--alignment varied` are separate experiments.
+
+`--passes 11` is an inexpensive screen; it cannot qualify a retained change.
+Acceptance uses the default 31 passes in each of two launches. `--storage warm`
+reuses committed capacity. `first` decommits before every map outside the clock;
+`growth` decommits before each corpus repetition. Both time each map separately,
+including commits inside parsing, and therefore include per-map clock overhead.
+They are allocation diagnostics, not directly comparable with the warm aggregate
+clock. Inputs remain preloaded in every mode.
+
+`tools/cpp_comparison.py` compiles the frozen original C++ directly to an object
+with `-std=c++20 -O3 -march=skylake`, renames its symbols and links the isolated
+reference serializer/allocator with a selected assembly candidate. It does not
+regenerate assembly. This provides the cumulative original-C++ comparison.
+
+```sh
+python3 tools/cpp_comparison.py --candidate build/variants/prefetch-1024 --name original-comparison
+python3 tools/sweep.py --name original-comparison \
+  --exe build/cpp-comparisons/original-comparison/verify.exe --reference 4698eb4 \
+  --manifest MANIFEST.csv --limit 0 --runs 2
+```
+
+`tools/profile.py` builds a separate ITT-instrumented executable, preloads and warms
+while collection is paused, and runs VTune's hardware `uarch-exploration` collection
+on the same pinned core. Supply the Intel ITT include/source directories and a
+Coffee-Lake-compatible VTune executable through its command-line options. Native
+measurement and profiling runs share a host mutex. `tools/profile_report.py`
+resolves MinGW addresses using the exact executable's symbol table.
+
+See [the coverage matrix](experiments/audit.md), [experiment outcomes](experiments/sweep.md)
+and [machine-readable samples](experiments/results/) for the completed/rejected
+transfers. `tools/export_sweep.py` exports provenance and samples without publishing
+private corpus filenames or local host paths.

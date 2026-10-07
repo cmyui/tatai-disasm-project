@@ -25,20 +25,22 @@ def quote(s):
 def powershell(host, script):
     script = "$ProgressPreference='SilentlyContinue'; " + script
     encoded = base64.b64encode(script.encode('utf-16le')).decode()
-    subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host,
-                    'powershell -NoProfile -EncodedCommand ' + encoded], check=True)
+    result=subprocess.run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host,
+                    'powershell -NoProfile -EncodedCommand ' + encoded])
+    if result.returncode:raise RuntimeError(f'Remote measurement failed with exit {result.returncode}')
 
-def summary(path):
+def summary(path, passes=31):
     text = path.read_text(encoding='utf-8-sig')
     rows = [tuple(map(float, r)) for r in re.findall(
         r'pass=(\d+) reference=([\d.]+) candidate=([\d.]+) ratio=([\d.]+)', text) if r[0] != '0']
-    if len(rows) != 30 or 'checksum=' not in text or 'matched=' not in text:
+    if len(rows) != passes-1 or 'checksum=' not in text or 'matched=' not in text:
         raise RuntimeError(f'Incomplete benchmark: {path}')
     ratio = statistics.median(r[3] for r in rows)
     return dict(reference_ns=statistics.median(r[1] for r in rows),
                 candidate_ns=statistics.median(r[2] for r in rows), ratio=ratio,
                 reduction_percent=100*(1-ratio), faster_pairs=sum(r[3]<1 for r in rows),
-                correctness=re.search(r'matched=.*', text)[0], samples=rows)
+                correctness=re.search(r'matched=.*', text)[0],
+                alignment_counts=([int(x) for x in re.search(r'input_alignment_counts=([0-9,]+)',text)[1].split(',')] if 'input_alignment_counts=' in text else None), samples=rows)
 
 def selected(row, cohort):
     n=lambda k:int(row[k])
@@ -47,6 +49,8 @@ def selected(row, cohort):
     if cohort=='timing-v14':return n('version')<=7
     if cohort=='fallback':return n('object_fallback')+n('slider_fallback')>0
     if cohort=='long-sliders':return n('max_points')>=16
+    if cohort=='negative-sliders':return n('negative_calls')>0
+    if cohort=='single-sliders':return n('sliders')>0 and n('max_points')==1
     if cohort=='integer-lengths':return n('sliders')>0 and n('decimal_lengths')==0
     if cohort=='fractional-lengths':return n('decimal_lengths')>0
     if cohort=='large':return n('bytes')>=65536
@@ -64,12 +68,14 @@ def main():
     p.add_argument('--alignment',choices=['natural','varied'],default='natural')
     p.add_argument('--limit',type=int,default=20001)
     p.add_argument('--runs',type=int,default=1)
+    p.add_argument('--passes',type=int,default=31)
     p.add_argument('--cohort',choices=['all','timing-legacy','timing-v14','fallback','long-sliders',
-        'integer-lengths','fractional-lengths','large','small','short_time','time4','time5','time6','time7','long_time'],default='all')
+        'negative-sliders','single-sliders','integer-lengths','fractional-lengths','large','small','short_time','time4','time5','time6','time7','long_time'],default='all')
+    p.add_argument('--storage',choices=['warm','first','growth'],default='warm')
     p.add_argument('--note',default='')
     a=p.parse_args()
     if not re.fullmatch(r'[a-z0-9][a-z0-9-]*',a.name):p.error('name must be lowercase letters/digits/hyphens')
-    if a.runs<1 or a.limit<0:p.error('invalid runs or limit')
+    if a.runs<1 or a.limit<0 or a.passes<3:p.error('invalid runs or limit')
     out=ROOT/'build/sweep'/a.name;out.mkdir(parents=True,exist_ok=False)
     exe=a.exe.resolve();manifest=a.manifest.resolve()
     with manifest.open(encoding='utf-8-sig',newline='') as f: rows=list(csv.DictReader(f))
@@ -91,18 +97,26 @@ def main():
     subprocess.run(['scp',str(out/'maps.txt'),a.host+':'+remote+'/maps.txt'],check=True)
     for i in range(a.runs):
         log=f'{remote}/run-{i+1}.txt'
-        powershell(a.host,f"""$ErrorActionPreference='Stop'
+        failure=None
+        try:
+            powershell(a.host,f"""$ErrorActionPreference='Stop'
 $m=New-Object System.Threading.Mutex($false,'Local\\TataiParserBenchmark')
 if(-not $m.WaitOne(0)){{throw 'Another parser measurement owns the host'}}
 try {{
 $env:TATAI_MAP_LIST={quote(remote+'/maps.txt')}
-& {quote(remote+'/verify.exe')} {quote(a.maps)} {a.limit} --benchmark {a.alignment} | Out-File -Encoding utf8 {quote(log)}
+$env:TATAI_STORAGE={quote(a.storage)}
+$env:TATAI_PASSES={quote(a.passes)}
+$ErrorActionPreference='Continue'
+& {quote(remote+'/verify.exe')} {quote(a.maps)} {a.limit} --benchmark {a.alignment} 2>&1 | Out-File -Encoding utf8 {quote(log)}
 if($LASTEXITCODE -ne 0){{throw "Verifier exit=$LASTEXITCODE"}}
 }} finally {{$m.ReleaseMutex();$m.Dispose()}}
 """)
+        except RuntimeError as error:
+            failure=error
         local=out/f'run-{i+1}.txt'
         subprocess.run(['scp',a.host+':'+log,str(local)],check=True)
-        result=summary(local);(out/f'run-{i+1}.json').write_text(json.dumps(result,indent=2)+'\n')
+        if failure:raise failure
+        result=summary(local,a.passes);(out/f'run-{i+1}.json').write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps(result|{'samples':len(result['samples'])}),flush=True)
 
 if __name__=='__main__':main()

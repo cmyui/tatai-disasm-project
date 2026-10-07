@@ -31,7 +31,8 @@ layout_ref = ref if 'tools/parser_layout.h' in subprocess.check_output(
 for name in ('parser_layout.h', 'parser_output.h'):
     (destination / name).write_bytes(subprocess.check_output(
         ['git', 'show', f'{layout_ref}:tools/{name}'], cwd=root))
-(destination / 'adapter.cpp').write_text('''#include <sstream>
+(destination / 'adapter.cpp').write_text('''#include <windows.h>
+#include <sstream>
 #include <cstdint>
 #include <cstring>
 #include <cstdio>
@@ -45,6 +46,14 @@ extern "C" void *reference_create() {
 std::string reference_serialize(void *p) {
   std::ostringstream s;reference_model::Output out(s);
   out.map(*static_cast<reference_model::_memory_region_header *>(p));return s.str();
+}
+extern "C" void reference_reset(void *p) {
+  using namespace reference_model;
+  auto *h=static_cast<_memory_region_header *>(p);
+  for(size_t i=1;i<MEM_REGION_COUNT;++i) {
+    if(h->ALLOC_COUNTS[i])VirtualFree(static_cast<char *>(p)+i*MEMORY_REGION_SIZE,h->ALLOC_COUNTS[i],MEM_DECOMMIT);
+    h->ALLOC_COUNTS[i]=0;
+  }
 }
 extern "C" uint32_t reference_count(void *p) {
   return static_cast<reference_model::_memory_region_header *>(p)->ELEM_COUNT[reference_model::MEM_object_header];
