@@ -28,9 +28,19 @@ clean:
 
 PARSER_OBJECTS := $(filter-out build/benchmark.o build/file_io.o build/runtime.o build/runtime_data.o,$(OBJECTS))
 
-build/benchmark_harness.o: tools/benchmark.cpp tools/parser_layout.h
+build/benchmark_harness.o: tools/benchmark.cpp tools/parser_layout.h tools/parser_output.h
 	mkdir -p build
 	$(CXX) -std=c++20 -O3 -march=skylake -c tools/benchmark.cpp -o $@
 
 build/benchmark.exe: build/benchmark_harness.o $(PARSER_OBJECTS)
 	$(CXX) $^ -static -o $@ -lonecore
+
+REFERENCE_REF ?= origin/main
+.PHONY: verify
+build/verify_harness.o: tools/verify.cpp tools/parser_output.h tools/parser_layout.h
+	mkdir -p build
+	$(CXX) -std=c++20 -O3 -march=skylake -c $< -o $@
+
+verify: build/verify_harness.o $(PARSER_OBJECTS)
+	python3 tools/build_reference.py $(REFERENCE_REF)
+	$(CXX) build/verify_harness.o $(PARSER_OBJECTS) build/reference/*.o -static -o build/verify.exe -lonecore

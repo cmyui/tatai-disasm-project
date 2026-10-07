@@ -13,7 +13,7 @@ machine-code listing. Run `make clean` to remove build outputs.
 | `object_headers.s`, `object_tables.s` | Timestamp and coordinate decoding |
 | `object_loop.s` | Object-loop specializations for 4–7 digit timestamps |
 | `sliders.s`, `slider_tables.s` | Slider types, negative coordinates and general fallback |
-| `spinners.s` | Spinner end-time parsing |
+| `spinners.s` | Unused reference spinner helper |
 | `decimals.s`, `decimal_tables.s` | Decimal conversion |
 | `memory.s` | Windows virtual-memory allocation |
 | `deferrals.s` | Deferred object and slider work |
@@ -22,8 +22,8 @@ machine-code listing. Run `make clean` to remove build outputs.
 | `constants.s` | Shared strings, scalar constants and SIMD constants |
 | `runtime.s`, `runtime_data.s` | C++ library support, exception handling and RTTI |
 
-Public parser names are readable assembly symbols such as `parse_beatmap`,
-`parse_objects_5digit`, `parse_slider_negative` and `memory_region_create`.
+Parser entry points have readable assembly names such as `parse_beatmap`,
+`parse_objects_5digit_context`, `parse_slider_negative` and `memory_region_create`.
 Local block labels carry the containing function's name. `asm/INDEX.md` maps entry
 points to their original source declarations. The build still uses libstdc++ for
 file loading and benchmarks, so runtime ABI aliases and imported library names
@@ -49,6 +49,52 @@ assembly calls may use a different convention when both sides agree.
 Some source helpers are inlined into larger functions. They have no separate call
 boundary to edit; their instructions live in `beatmap.s` or `object_loop.s`.
 
+## Internal object context
+
+`parse_objects_5digit_context` and `parse_objects_6digit_context` are assembly-only
+entry points. Their input and output cursors stay in the same registers:
+
+| Register | Value |
+|---|---|
+| RDI | Memory-region header, preserved |
+| RBP | Next line pointer, advanced in place |
+| R15 | Next object header, advanced in place |
+| R14 | Next object body, advanced in place |
+| R12 | Next slider deferral, advanced in place |
+| XMM6 | Comma vector, preserved |
+| XMM8 | ASCII digit offset vector, preserved |
+| XMM9 | Object-result shuffle, preserved |
+| XMM10 | Line-list end pointer in its low 64 bits, preserved |
+
+RAX, RCX, RDX, R8–R11, RBX, R13, RSI and XMM0–XMM5 are scratch. XMM7 and
+XMM11–XMM15 are untouched. The caller initializes the shared vectors once for
+this phase. Each routine reserves 40 bytes for aligned Windows fallback calls
+and updates the four cursors even when the next line is the null sentinel.
+There is no packed return value or per-call preservation of the cursors. The
+outer `parse_beatmap` boundary retains the Windows ABI and restores its caller's
+nonvolatile registers. Four- and seven-digit routines currently use the Windows
+calling convention.
+
+## Parsing scope and implementation
+
+The reference C++ extracts format version, mode, circle size, stack leniency,
+approach rate, overall difficulty, slider multiplier/tick rate, object position,
+time/type, slider anchors/repeats/length and reduced timing points. Metadata and
+storyboard
+content and hitsound/sample fields are outside the returned model. Spinner object
+headers are parsed, but their body/end-time storage is not populated by the
+reference; verification excludes those unwritten bytes. The [format specification](https://osu.ppy.sh/wiki/en/Client/File_formats/osu_%28file_format%29)
+describes the surrounding syntax; reference-parser behavior defines equivalence,
+including its clamping, version handling, decimal rounding and fallback behavior.
+
+Newline masks build a line-pointer list in bulk. Timestamp-width runs select
+coordinate/type shuffles from delimiter positions instead of looping over ASCII
+digits. Slider delimiter masks select validated lookup entries for up to two
+points; negative coordinates use another lookup, and unusual shapes are deferred
+to a general parser. Decimal conversion uses SIMD multiply/add stages and a power
+of ten. The allocator reserves aligned address regions so fallback routines can
+recover the owning parser state from an output pointer.
+
 ## Toolchain and source regeneration
 
 MinGW-w64 GCC 16.2.0 (`x86_64-w64-mingw32-g++`) runs on this Mac. Source generation
@@ -67,13 +113,14 @@ Change the source snapshot and regenerate to use another corpus location.
 
 ## Assembly tuning and verification
 
-The current assembly keeps SIMD delimiter/digit constants in nonvolatile registers
-across the 5- and 6-digit object loops. Their save slots and Windows unwind metadata
-are included. The body scanner uses 32-byte aligned loads, masks bytes before the
+The current assembly keeps SIMD delimiter/digit constants in the shared register
+context across the 5- and 6-digit object loops. Nonvolatile state is saved at the
+outer Windows boundary, and unwind metadata describes each stack frame. The body scanner uses 32-byte aligned loads, masks bytes before the
 input start, and prefetches 512 bytes ahead. The slider path decodes only the
 hitsound field length where its numeric value is unused. Assembly-time branch
 padding keeps branches within 32-byte boundaries; this tuning targets the i7-8700.
-These changes preserve the existing inlined helpers and call boundaries.
+The positive slider path consumes lookup metadata directly. Five- and six-digit
+object routines use the shared register context above.
 
 Input buffers still require the original readable tail padding for SIMD loads.
 The aligned scanner may read up to 31 bytes before the input pointer, within its
@@ -90,4 +137,33 @@ Build the independent parser harness with `make build/benchmark.exe`. On Windows
 The first command preloads sorted `.osu` files, pins one CPU core, warms the parser,
 and reports 21 passes in nanoseconds per map. A zero limit selects all maps. The
 second command serializes parsed headers, objects, slider points and timing fields,
-excluding pointers and padding, for comparison against a reference build.
+excluding pointers, padding and unwritten spinner bodies, for comparison against
+a reference build.
+
+For a native comparison against a Git revision, build both parsers into one test
+executable with isolated reference symbols:
+
+```sh
+make verify REFERENCE_REF=origin/main
+```
+
+```powershell
+.\build\verify.exe C:\path\to\maps
+```
+
+This compares the serialized fields exactly for every `.osu` file in sorted order,
+varying input alignment across the corpus. It also exercises timestamp-width
+transitions, object-header and slider fallbacks, negative coordinates and repeat
+counts on inputs at all 32 alignments between inaccessible guard pages. An optional
+second argument limits the corpus for a quick check; zero selects all maps.
+The resolved reference revision is recorded in `build/reference/revision.txt`.
+
+To time both revisions in the same process after verifying their output, add a
+corpus limit and `--benchmark`:
+
+```powershell
+.\build\verify.exe C:\path\to\maps 20001 --benchmark
+```
+
+This pins one core, alternates reference/candidate order and reports 31 paired
+passes in nanoseconds per map. Exclude pass zero when summarizing timings.
