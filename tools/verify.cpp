@@ -103,6 +103,65 @@ int main(int argc,char **argv) {
       }
     }
   }
+  // Paired headers: every 1-4 digit coordinate width, both hot timestamp
+  // widths, and all circle/slider combinations. Four-digit coordinates defer.
+  for(unsigned time : {50000u,500000u})for(unsigned shape=0;shape<256;++shape) {
+    std::string xy[2];
+    for(unsigned p=0;p<2;++p) {
+      xy[p]=std::string(1+((shape>>(4*p))&3),'1')+","+
+            std::string(1+((shape>>(4*p+2))&3),'2');
+    }
+    for(unsigned types=0;types<4;++types) {
+      std::string input=header;
+      for(unsigned p=0;p<2;++p)
+        input+=xy[p]+","+std::to_string(time+p)+","+
+               ((types&(1u<<p))?"2":"1")+",0,B|300:200,1,100\n";
+      for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+        if(!guarded(verify,input,offset,tail)) {
+          std::cerr<<"paired header mismatch: time="<<time<<" shape="<<shape
+                   <<" types="<<types<<" offset="<<offset<<" tail="<<tail<<"\n";return 4;
+        }
+    }
+  }
+  // Long types and signed coordinates in each position of an odd run.
+  for(unsigned time : {50000u,500000u})for(unsigned type : {12u,21u,128u,134u})
+    for(unsigned position=0;position<3;++position) {
+      std::string input=header;
+      for(unsigned p=0;p<3;++p)
+        input+=(p==position?"-50,192,":"256,192,")+std::to_string(time+p)+","+
+               std::to_string(p==position?type:2u)+",0,B|300:200,1,100\n";
+      for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+        if(!guarded(verify,input,offset,tail))return 4;
+    }
+  // Type bits must remain exact in either lane, including combo flags and
+  // multi-digit types that must return to the original single-header path.
+  for(unsigned time : {50000u,500000u})for(unsigned type=0;type<256;++type) {
+    auto input=header;
+    unsigned object_time=time;
+    for(unsigned t : {type,2u,1u,type,2u})
+      input+="256,192,"+std::to_string(object_time++)+","+std::to_string(t)+
+             ",0,B|300:200,1,100\n";
+    for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+      if(!guarded(verify,input,offset,tail)) {
+        std::cerr<<"paired type mismatch: "<<type<<"\n";return 4;
+      }
+  }
+  // Cross timestamp widths at both even and odd pairing positions, in both
+  // directions, then require another successful pair after the transition.
+  for(unsigned boundary : {10000u,100000u,1000000u})
+    for(bool reverse : {false,true})for(unsigned prefix : {1u,2u}) {
+      auto input=header;
+      const unsigned first=reverse?boundary:boundary-1;
+      const unsigned next=reverse?boundary-1:boundary;
+      for(unsigned p=0;p<prefix+3;++p)
+        input+="256,192,"+std::to_string(p<prefix?first:next)+
+               ",2,0,B|300:200,1,100\n";
+      for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+        if(!guarded(verify,input,offset,tail)) {
+          std::cerr<<"paired width mismatch: "<<boundary<<" reverse="<<reverse
+                   <<" prefix="<<prefix<<"\n";return 4;
+        }
+    }
   // Dense masks, empty masks, long gaps, and transitions at SIMD boundaries.
   for(unsigned gap: {0u,1u,31u,32u,63u,64u,65u,127u,128u,511u,512u,4096u}) {
     auto input=header;

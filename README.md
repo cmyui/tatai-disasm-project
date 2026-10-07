@@ -67,9 +67,10 @@ entry points. Their input and output cursors stay in the same registers:
 | XMM9 | Object-result shuffle, preserved |
 | XMM10 | Line-list end pointer in its low 64 bits, preserved |
 
-RAX, RCX, RDX, R8–R11, RBX, R13, RSI and XMM0–XMM5 are scratch. XMM7 and
-XMM11–XMM15 are untouched. The caller initializes the shared vectors once for
-this phase. Each routine reserves 40 bytes for aligned Windows fallback calls
+RAX, RCX, RDX, R8–R11, RBX, R13, RSI and YMM0–YMM5 are scratch. The upper
+128 bits of YMM6, YMM8 and YMM9 are also scratch; their low XMM halves remain
+preserved. XMM7 and XMM11–XMM15 are untouched. The caller initializes the shared
+vectors once for this phase. Each routine reserves 40 bytes for aligned Windows fallback calls
 and updates the four cursors even when the next line is the null sentinel.
 There is no packed return value or per-call preservation of the cursors. The
 outer `parse_beatmap` boundary retains the Windows ABI and restores its caller's
@@ -128,9 +129,17 @@ the page-aligned table places them in 90 cache lines across 17 pages.
 `tools/generate_slider_positive_table.py` emits this first table in
 `asm/slider_tables.s`.
 
-Five- and six-digit object routines use the shared register context above. The five-digit loop keeps
-both shuffle-table bases in registers and advances its deferral cursor directly;
-its fast path returns to the loop head with one conditional branch.
+Five- and six-digit object routines decode two eligible headers at once, one
+per 128-bit lane of an AVX2 register. Both lines must match the routine's timestamp
+width and have supported nonnegative coordinates and a single-digit type. The
+original single-header paths handle odd tails, width transitions and unusual
+shapes. Pair validation completes before any output or cursor changes.
+
+The slider bit of a single decimal type digit is also its ASCII bit 1, so the
+deferral queue can advance without waiting for the SIMD conversion, store and
+reload. Queue writes retain input order. Both shuffle-table bases and the shared
+context remain in registers; pairing uses no additional stack space. Constants
+occupy both YMM lanes and are restored after Windows-ABI fallback calls.
 
 Hit-object line pointers are discovered and consumed in 1 KiB input batches.
 Header/timing parsing completes before the line array is reused as scratch.
@@ -179,8 +188,11 @@ gaps, and transitions around SIMD boundaries. Chunk cases cover timestamp-width
 transitions, long lines, large headers, decreasing timestamps, and early section
 markers, at all alignments beside guard pages. Positive-slider cases exhaust
 one- through four-digit coordinate widths for single and paired points, including
-continuations and four-digit fallback shapes. An optional
-second argument limits the corpus for a quick check; zero selects all maps.
+continuations and four-digit fallback shapes. Paired-header cases cover all
+one- through four-digit coordinate-width combinations, circle/slider ordering,
+all 256 type values, odd tails, signed fallbacks and timestamp-width transitions
+in either pairing position. An optional second argument limits the corpus for a
+quick check; zero selects all maps.
 The resolved reference revision is recorded in `build/reference/revision.txt`.
 
 To time both revisions in the same process after verifying their output, add a
