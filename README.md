@@ -9,6 +9,7 @@ machine-code listing. Run `make clean` to remove build outputs.
 | File | Responsibility |
 |---|---|
 | `beatmap.s` | Beatmap entry point, body parsing and hitobject discovery |
+| `line_scan.s` | Bounded hit-object line-pointer refills |
 | `headers.s`, `header_tables.s` | Beatmap headers and timing points |
 | `object_headers.s`, `object_tables.s` | Timestamp and coordinate decoding |
 | `object_loop.s` | Object-loop specializations for 4–7 digit timestamps |
@@ -87,7 +88,7 @@ reference; verification excludes those unwritten bytes. The [format specificatio
 describes the surrounding syntax; reference-parser behavior defines equivalence,
 including its clamping, version handling, decimal rounding and fallback behavior.
 
-Newline masks build a line-pointer list in bulk. Timestamp-width runs select
+Newline masks build batches of line pointers. Timestamp-width runs select
 coordinate/type shuffles from delimiter positions instead of looping over ASCII
 digits. Slider delimiter masks select validated lookup entries for up to two
 points; negative coordinates use another lookup, and unusual shapes are deferred
@@ -126,6 +127,16 @@ object routines use the shared register context above. The five-digit loop keeps
 both shuffle-table bases in registers and advances its deferral cursor directly;
 its fast path returns to the loop head with one conditional branch.
 
+Hit-object line pointers are discovered and consumed in 1 KiB input batches.
+Header/timing parsing completes before the line array is reused as scratch.
+The refill helper uses a private calling convention: RBP and RSI are replaced
+with the new line range by the caller, so the helper needs no save frame.
+Each batch resumes the same timestamp-width decoder, while slider deferrals
+retain their original ordering and are processed after object headers. Lines may
+cross batch boundaries because decoding reads the original padded input directly.
+The line array is internal scratch, not a retained index of the complete file.
+An early section marker that truncates header parsing triggers a full-input rescan.
+
 Input buffers still require the original readable tail padding for SIMD loads.
 The aligned scanner may read up to 31 bytes before the input pointer, within its
 mapped page; those bytes are masked out. Do not regenerate when retaining these
@@ -159,7 +170,9 @@ This compares the serialized fields exactly for every `.osu` file in sorted orde
 varying input alignment across the corpus. It also exercises timestamp-width
 transitions, object-header and slider fallbacks, negative coordinates and repeat
 counts on inputs at all 32 alignments between inaccessible guard pages. Scanner cases also cover dense newlines, long
-gaps, and transitions around SIMD boundaries. An optional
+gaps, and transitions around SIMD boundaries. Chunk cases cover timestamp-width
+transitions, long lines, large headers, decreasing timestamps, and early section
+markers, at all alignments beside guard pages. An optional
 second argument limits the corpus for a quick check; zero selects all maps.
 The resolved reference revision is recorded in `build/reference/revision.txt`.
 

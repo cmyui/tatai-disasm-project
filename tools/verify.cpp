@@ -91,6 +91,29 @@ int main(int argc,char **argv) {
     for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
       if(!guarded(verify,input,offset,tail)){std::cerr<<"scanner guard mismatch gap="<<gap<<"\n";return 4;}
   }
+  std::vector<std::string> chunk_maps;
+  std::string short_times=header;
+  for(unsigned i=0;i<1500;++i)short_times+="256,192,999,1,0,0:0:0:0:\n";
+  chunk_maps.push_back(short_times);
+  std::string transitions=header;
+  for(const char *time:{"999","1000","9999","10000","99999","100000","999999","1000000"})
+    for(unsigned i=0;i<257;++i)transitions+="256,192,"+std::string(time)+",2,0,B|-30:200|400:300,12,100.25\n";
+  chunk_maps.push_back(transitions);
+  auto gaps=header;
+  gaps+="256,192,50000,1,0,"+std::string(70000,'0')+"\n256,192,50001,1,0,0:0:0:0:\n";
+  chunk_maps.push_back(gaps);
+  auto big_header=header;
+  big_header.insert(big_header.find("[General]"),"//"+std::string(70000,'x')+"\n");
+  chunk_maps.push_back(big_header+objects[6]);
+  auto backwards=header;
+  for(unsigned i=0;i<1000;++i)backwards+="256,192,50000,1,0,0:0:0:0:\n";
+  backwards+="256,192,999,1,0,0:0:0:0:\n";
+  chunk_maps.push_back(backwards);
+  auto early_section=header;
+  early_section.insert(early_section.find("[General]"),"[HitObjects]\n//"+std::string(70000,'x')+"\n");
+  chunk_maps.push_back(early_section+objects[6]);
+  for(const auto &input:chunk_maps)for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+    if(!guarded(verify,input,offset,tail)){std::cerr<<"chunk boundary mismatch offset="<<offset<<" tail="<<tail<<"\n";return 4;}
   const auto guarded_cases=verify.checked;
   std::vector<std::filesystem::path> paths;
   for(const auto &p:std::filesystem::directory_iterator(argv[1]))if(p.path().extension()==".osu")paths.push_back(p.path());
