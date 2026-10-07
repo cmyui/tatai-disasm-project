@@ -122,8 +122,13 @@ speculative line pointers, advances by the actual newline count, and handles any
 remaining matches in an overflow loop. The slider path decodes only the
 hitsound field length where its numeric value is unused. Assembly-time branch
 padding keeps branches within 32-byte boundaries; this tuning targets the i7-8700.
-The positive slider path consumes lookup metadata directly. Five- and six-digit
-object routines use the shared register context above. The five-digit loop keeps
+The positive slider path indexes a 1 MiB table directly by its delimiter mask,
+then validates the entry and consumes its metadata. Only 90 entries are populated;
+the page-aligned table places them in 90 cache lines across 17 pages.
+`tools/generate_slider_positive_table.py` emits this first table in
+`asm/slider_tables.s`.
+
+Five- and six-digit object routines use the shared register context above. The five-digit loop keeps
 both shuffle-table bases in registers and advances its deferral cursor directly;
 its fast path returns to the loop head with one conditional branch.
 
@@ -172,7 +177,9 @@ transitions, object-header and slider fallbacks, negative coordinates and repeat
 counts on inputs at all 32 alignments between inaccessible guard pages. Scanner cases also cover dense newlines, long
 gaps, and transitions around SIMD boundaries. Chunk cases cover timestamp-width
 transitions, long lines, large headers, decreasing timestamps, and early section
-markers, at all alignments beside guard pages. An optional
+markers, at all alignments beside guard pages. Positive-slider cases exhaust
+one- through four-digit coordinate widths for single and paired points, including
+continuations and four-digit fallback shapes. An optional
 second argument limits the corpus for a quick check; zero selects all maps.
 The resolved reference revision is recorded in `build/reference/revision.txt`.
 

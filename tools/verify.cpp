@@ -83,6 +83,26 @@ int main(int argc,char **argv) {
   };
   for(const auto &o:objects)for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
     if(!guarded(verify,header+o,offset,tail)){std::cerr<<"guarded mismatch: "<<o<<" offset="<<offset<<" tail="<<tail<<"\n";return 4;}
+  // Exhaust positive-table shapes plus four-digit fallback shapes. Test both
+  // a terminating comma and another point, at every guarded input alignment.
+  for(unsigned coordinates : {2u,4u}) {
+    for(unsigned shape=0;shape<(1u<<(2*coordinates));++shape) {
+      std::string path;
+      for(unsigned coordinate=0;coordinate<coordinates;++coordinate) {
+        if(coordinate)path+=(coordinate&1)?':':'|';
+        path+=std::string(1+((shape>>(2*coordinate))&3),'1');
+      }
+      for(bool more : {false,true}) {
+        auto input=header+"256,192,600000,2,0,B|"+path+
+                   (more?"|22:333,1,100\n":",1,100\n");
+        for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+          if(!guarded(verify,input,offset,tail)) {
+            std::cerr<<"slider shape mismatch: "<<path<<" more="<<more
+                     <<" offset="<<offset<<" tail="<<tail<<"\n";return 4;
+          }
+      }
+    }
+  }
   // Dense masks, empty masks, long gaps, and transitions at SIMD boundaries.
   for(unsigned gap: {0u,1u,31u,32u,63u,64u,65u,127u,128u,511u,512u,4096u}) {
     auto input=header;
