@@ -563,8 +563,8 @@ parse_objects_6digit:
 .Lparse_objects_6digit_block_13:
 	mov	rdx, rsi
 	mov	rcx, r13
-	mov	QWORD PTR 152[rsp], r9
-	mov	QWORD PTR 144[rsp], r8
+	mov	QWORD PTR 184[rsp], r9
+	mov	QWORD PTR 176[rsp], r8
 	call	defer_object_header
 	mov	eax, DWORD PTR 12[rsi]
 	vmovdqa	xmm5, XMMWORD PTR constant_6[rip]
@@ -572,8 +572,8 @@ parse_objects_6digit:
 	vmovdqa	xmm2, XMMWORD PTR constant_11[rip]
 	vmovdqa	xmm3, XMMWORD PTR constant_10[rip]
 	vmovdqa	xmm4, XMMWORD PTR constant_9[rip]
-	mov	r9, QWORD PTR 152[rsp]
-	mov	r8, QWORD PTR 144[rsp]
+	mov	r9, QWORD PTR 184[rsp]
+	mov	r8, QWORD PTR 176[rsp]
 	jmp	.Lparse_objects_6digit_block_5
 	.p2align 4,,10
 	.p2align 3
