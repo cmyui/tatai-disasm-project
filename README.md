@@ -116,7 +116,9 @@ Change the source snapshot and regenerate to use another corpus location.
 The current assembly keeps SIMD delimiter/digit constants in the shared register
 context across the 5- and 6-digit object loops. Nonvolatile state is saved at the
 outer Windows boundary, and unwind metadata describes each stack frame. The body scanner uses 32-byte aligned loads, masks bytes before the
-input start, and prefetches 512 bytes ahead. The slider path decodes only the
+input start, and prefetches 512 bytes ahead. Each full block emits three
+speculative line pointers, advances by the actual newline count, and handles any
+remaining matches in an overflow loop. The slider path decodes only the
 hitsound field length where its numeric value is unused. Assembly-time branch
 padding keeps branches within 32-byte boundaries; this tuning targets the i7-8700.
 The positive slider path consumes lookup metadata directly. Five- and six-digit
@@ -156,7 +158,8 @@ make verify REFERENCE_REF=origin/main
 This compares the serialized fields exactly for every `.osu` file in sorted order,
 varying input alignment across the corpus. It also exercises timestamp-width
 transitions, object-header and slider fallbacks, negative coordinates and repeat
-counts on inputs at all 32 alignments between inaccessible guard pages. An optional
+counts on inputs at all 32 alignments between inaccessible guard pages. Scanner cases also cover dense newlines, long
+gaps, and transitions around SIMD boundaries. An optional
 second argument limits the corpus for a quick check; zero selects all maps.
 The resolved reference revision is recorded in `build/reference/revision.txt`.
 

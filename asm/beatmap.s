@@ -195,9 +195,11 @@ parse_beatmap_body:
 	or	rax, rcx
 	and rax, rbx
 	mov rbx, -1
+	# Emit three speculative pointers; only popcount entries become visible.
 	xor	ecx, ecx
-	tzcnt	r11, rax
 	popcnt	rcx, rax
+	xor	r11d, r11d
+	tzcnt	r11, rax
 	blsr	rax, rax
 	add	r11, rdx
 	mov	QWORD PTR [rsi], r11
@@ -208,14 +210,9 @@ parse_beatmap_body:
 	mov	QWORD PTR 8[rsi], r11
 	xor	r11d, r11d
 	tzcnt	r11, rax
-	blsr	rax, rax
 	add	r11, rdx
 	mov	QWORD PTR 16[rsi], r11
-	xor	r11d, r11d
-	tzcnt	r11, rax
-	add	r11, rdx
-	mov	QWORD PTR 24[rsi], r11
-	cmp	ecx, 4
+	cmp	ecx, 3
 	jg	.Lparse_beatmap_body_block_15
 	lea	rsi, [rsi+rcx*8]
 .Lparse_beatmap_body_block_8:
@@ -309,7 +306,7 @@ parse_beatmap_body:
 	.p2align 4,,10
 	.p2align 3
 .Lparse_beatmap_body_block_15:
-	add	rsi, 32
+	add	rsi, 24
 	blsr	rax, rax
 	je	.Lparse_beatmap_body_block_8
 	mov	r14, rsi

@@ -83,6 +83,15 @@ int main(int argc,char **argv) {
   };
   for(const auto &o:objects)for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
     if(!guarded(verify,header+o,offset,tail)){std::cerr<<"guarded mismatch: "<<o<<" offset="<<offset<<" tail="<<tail<<"\n";return 4;}
+  // Dense masks, empty masks, long gaps, and transitions at SIMD boundaries.
+  for(unsigned gap: {0u,1u,31u,32u,63u,64u,65u,127u,128u,511u,512u,4096u}) {
+    auto input=header;
+    input.insert(input.find("[General]"), "//"+std::string(gap,'x')+"\n"+std::string(gap%66,'\n'));
+    input+=objects[6];
+    for(unsigned offset=0;offset<32;++offset)for(bool tail:{false,true})
+      if(!guarded(verify,input,offset,tail)){std::cerr<<"scanner guard mismatch gap="<<gap<<"\n";return 4;}
+  }
+  const auto guarded_cases=verify.checked;
   std::vector<std::filesystem::path> paths;
   for(const auto &p:std::filesystem::directory_iterator(argv[1]))if(p.path().extension()==".osu")paths.push_back(p.path());
   std::sort(paths.begin(),paths.end());
@@ -101,7 +110,7 @@ int main(int argc,char **argv) {
     if(benchmark)maps.push_back(std::move(bytes));
     if((i+1)%4096==0)std::cout<<"verified_maps="<<i+1<<std::endl;
   }
-  std::cout<<"matched="<<verify.checked<<" corpus_maps="<<paths.size()<<" guarded_cases="<<objects.size()*64<<std::endl;
+  std::cout<<"matched="<<verify.checked<<" corpus_maps="<<paths.size()<<" guarded_cases="<<guarded_cases<<std::endl;
   if(benchmark) {
     SetThreadAffinityMask(GetCurrentThread(),1ull<<2);
     uint64_t checksum=0;
