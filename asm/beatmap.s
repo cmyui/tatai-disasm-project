@@ -614,13 +614,19 @@ parse_beatmap_body:
 	cmp	r13, rsi
 	jnb	.Lparse_beatmap_body_block_54
 	mov	QWORD PTR 56[rsp], r13
-	vmovdqa	xmm4, XMMWORD PTR constant_15[rip]
+	# Two decimal conversions share the integer SIMD stages, one per lane.
+	vbroadcasti128	ymm4, XMMWORD PTR constant_15[rip]
 	mov	r9, r13
 	lea	r12, decimal_shuffles[rip]
-	vmovdqa	xmm3, XMMWORD PTR constant_16[rip]
-	vmovdqa	xmm2, XMMWORD PTR constant_17[rip]
+	vbroadcasti128	ymm3, XMMWORD PTR constant_16[rip]
+	vbroadcasti128	ymm2, XMMWORD PTR constant_17[rip]
 	lea	rbp, decimal_powers[rip]
 	vmovdqa	xmm5, xmm8
+	# XMM10 is already saved by the outer frame and dead after point parsing.
+	# Use one unsigned 32x32 product per qword to join two 8-digit groups.
+	mov	eax, 100000000
+	vmovd	xmm10, eax
+	vpbroadcastq	ymm10, xmm10
 	.p2align 4,,10
 	.p2align 3
 .Lparse_beatmap_body_block_31:
@@ -658,35 +664,32 @@ parse_beatmap_body:
 	sal	r10, 4
 	vpshufb	xmm1, xmm1, XMMWORD PTR [r12+r10]
 	mov	r10d, eax
-	vpmaddubsw	xmm1, xmm1, xmm4
 	sal	r10d, 4
-	vpmaddwd	xmm1, xmm1, xmm3
 	add	r10d, ecx
-	vpackssdw	xmm1, xmm1, xmm1
 	mov	r10d, r10d
-	vpmaddwd	xmm1, xmm1, xmm2
 	sal	r10, 4
-	vmovq	r13, xmm1
 	vpshufb	xmm0, xmm0, XMMWORD PTR [r12+r10]
-	mov	r14d, r13d
-	vpmaddubsw	xmm0, xmm0, xmm4
-	shr	r13, 32
-	imul	r14, r14, 100000000
-	vpmaddwd	xmm0, xmm0, xmm3
-	vpackssdw	xmm0, xmm0, xmm0
-	vpmaddwd	xmm0, xmm0, xmm2
-	add	r14, r13
-	cmp	r8d, edx
+	# Packing and all arithmetic below remain independent within each lane.
+	vinserti128	ymm1, ymm1, xmm0, 1
+	vpmaddubsw	ymm1, ymm1, ymm4
+	vpmaddwd	ymm1, ymm1, ymm3
+	vpackssdw	ymm1, ymm1, ymm1
+	vpmaddwd	ymm1, ymm1, ymm2
+	# Each qword is {low 32: leading 8 digits, high 32: trailing 8 digits}.
+	# Reconstruct exactly the scalar unsigned product and addition.
+	vpmuludq	ymm0, ymm1, ymm10
+	vpsrlq	ymm1, ymm1, 32
+	vpaddq	ymm1, ymm1, ymm0
+	# Keep the reference's signed i64 -> double -> scaled double rounding.
+	vmovq	r14, xmm1
+	vextracti128	xmm0, ymm1, 1
 	vmovq	r10, xmm0
+	cmp	r8d, edx
 	sbb	edx, r8d
 	vcvtsi2sd	xmm0, xmm7, r14
 	vmulsd	xmm0, xmm0, QWORD PTR 0[rbp+rdx*8]
 	mov	rdx, QWORD PTR 8[r9]
 	vmovsd	QWORD PTR 16[rdx], xmm0
-	mov	edx, r10d
-	shr	r10, 32
-	imul	rdx, rdx, 100000000
-	add	r10, rdx
 	cmp	ecx, eax
 	sbb	eax, ecx
 	vcvtsi2sd	xmm0, xmm7, r10
