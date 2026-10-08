@@ -4,7 +4,7 @@ ASFLAGS := -Wa,-mbranches-within-32B-boundaries
 MODULES := $(wildcard asm/*.s)
 OBJECTS := $(patsubst asm/%.s,build/%.o,$(MODULES))
 
-.PHONY: all clean disasm bench
+.PHONY: all clean disasm bench test
 all: build/tatai.exe
 
 build:
@@ -31,4 +31,14 @@ build/benchmark_harness.o: tools/benchmark.cpp tools/parser_layout.h | build
 build/benchmark.exe: build/benchmark_harness.o $(PARSER_OBJECTS)
 	$(CXX) $^ -static -o $@ -lonecore
 
+build/audit_call.o: tools/audit_call.s | build
+	$(CXX) -c $< -o $@
+
+build/test.o: tools/test.cpp tools/parser_layout.h | build
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+build/test.exe: build/test.o build/audit_call.o $(PARSER_OBJECTS)
+	$(CXX) $^ -static -o $@ -lonecore
+
 bench: build/benchmark.exe
+test: build/test.exe
