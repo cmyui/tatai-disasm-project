@@ -1,56 +1,30 @@
 # Tatai assembly project
 
-Edit the flat `.s` files in `asm/` and run `make`. Each module assembles independently;
-the linker produces `build/tatai.exe`. Run `make disasm` for the linked Intel-syntax
-machine-code listing. Run `make clean` to remove build outputs.
+Edit the flat `.s` files in `asm/` directly. Build with MinGW-w64 GCC
+(`x86_64-w64-mingw32-g++`); binaries target Windows x64 with AVX2/BMI2.
 
-## Modules
+```sh
+make all disasm
+make bench
+```
 
-| File | Responsibility |
-|---|---|
-| `beatmap.s` | Beatmap entry point, body parsing and hitobject discovery |
-| `headers.s`, `header_tables.s` | Beatmap headers and timing points |
-| `object_headers.s`, `object_tables.s` | Timestamp and coordinate decoding |
-| `object_loop.s` | Object-loop specializations for 4–7 digit timestamps |
-| `sliders.s`, `slider_tables.s` | Slider types, negative coordinates and general fallback |
-| `spinners.s` | Spinner end-time parsing |
-| `decimals.s`, `decimal_tables.s` | Decimal conversion |
-| `memory.s` | Windows virtual-memory allocation |
-| `deferrals.s` | Deferred object and slider work |
-| `file_io.s` | Corpus file loading |
-| `benchmark.s` | Main program and benchmark loops |
-| `constants.s` | Shared strings, scalar constants and SIMD constants |
-| `runtime.s`, `runtime_data.s` | C++ library support, exception handling and RTTI |
+`build/tatai.exe` retains the original application benchmark. The standalone
+benchmark accepts a map directory, optional map limit (zero means all), and
+optional pass count:
 
-Public parser names are readable assembly symbols such as `parse_beatmap`,
-`parse_objects_5digit`, `parse_slider_negative` and `memory_region_create`.
-Local block labels carry the containing function's name. `asm/INDEX.md` maps entry
-points to their original source declarations. The build still uses libstdc++ for
-file loading and benchmarks, so runtime ABI aliases and imported library names
-remain where necessary.
+```powershell
+.\build\benchmark.exe C:\path\to\maps 20001 5
+```
 
-## Editing contracts
+It preloads inputs, warms the parser, pins core 2, and reports time per map over
+four repetitions per pass. Compare the same inputs before and after assembly
+changes. `make clean` removes build outputs.
 
-The assembly uses GNU assembler Intel syntax and the Windows x64 ABI. Integer and
-pointer arguments use RCX, RDX, R8 and R9; callers reserve 32 bytes of shadow space.
-Preserve nonvolatile registers, stack alignment and `.seh_*` unwind directives.
-Lookup-table layouts and shared constants are part of the parser's contract.
+Preserve parsed results, decimal bits, ordering, and safe behavior. Internal
+layouts and calling conventions may change together with their consumers.
+External Windows calls must preserve the ABI and accurate unwind metadata.
 
-Some source helpers are inlined into larger functions. They have no separate call
-boundary to edit; their instructions live in `beatmap.s` or `object_loop.s`.
-
-## Toolchain and source regeneration
-
-MinGW-w64 GCC 16.2.0 (`x86_64-w64-mingw32-g++`) runs on this Mac. Source generation
-uses C++20, `-O3 -march=skylake -masm=intel`, without LTO. The result targets Windows
-x64 with AVX2/BMI2 and cannot run natively on macOS. The C++ runtime links statically;
-Windows allocation APIs link through `onecore`.
-
-`make regenerate` explicitly replaces the assembly modules using the snapshot in
-`source/`. It discards assembly edits. `gcc_compat.h` provides the required standard
-includes, MSVC assumption semantics, and an x86-compatible masked shift.
-Regeneration checks the emitted function inventory; update the name mapping in
-`tools/organize_assembly.py` if source changes add or remove functions.
-
-The existing benchmark reads `C:/Users/cmyui/Desktop/programming/tatai/maps`.
-Change the source snapshot and regenerate to use another corpus location.
+Keep input bytes resident throughout parsing. Supply 128 readable bytes after
+the logical input end and a terminating newline. The aligned 32-byte block
+containing the first input byte must also be readable. A new parse reuses the
+memory region and invalidates the previous map's output.
