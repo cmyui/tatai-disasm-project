@@ -536,6 +536,13 @@ parse_beatmap_body:
 .Lparse_beatmap_body_block_25:
 	mov	rsi, r11
 .Lparse_beatmap_body_block_26:
+	# Prefetch four slider inputs ahead; bound the record load by queue end.
+	lea rax, 64[rsi]
+	cmp rax, rbx
+	jae .Lsweep_prefetch_end
+	mov rax, QWORD PTR [rax]
+	prefetcht0 [rax]
+.Lsweep_prefetch_end:
 	mov rbp, QWORD PTR [rsi]
 	mov r10, QWORD PTR 8[rsi]
 	mov r12d, 15
