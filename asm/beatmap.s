@@ -536,8 +536,8 @@ parse_beatmap_body:
 .Lparse_beatmap_body_block_25:
 	mov	rsi, r11
 .Lparse_beatmap_body_block_26:
-	# Prefetch four slider inputs ahead; bound the record load by queue end.
-	lea rax, 64[rsi]
+	# Prefetch eight slider inputs ahead; bound the record load by queue end.
+	lea rax, 128[rsi]
 	cmp rax, rbx
 	jae .Lsweep_prefetch_end
 	mov rax, QWORD PTR [rax]
@@ -549,13 +549,15 @@ parse_beatmap_body:
 	vmovdqa xmm2, xmm6
 	mov QWORD PTR [r10], rdx
 	# Only the 2- or 3-byte hitsound field length is consumed here.
-	mov eax, 2
-	mov ecx, 3
 	cmp BYTE PTR 1[rbp], 44
-	cmovne eax, ecx
-	add rbp, rax
-	movzx	eax, BYTE PTR 0[rbp]
-	add	rbp, 2
+	jne .Lparse_beatmap_body_hitsound_two
+	movzx eax, BYTE PTR 2[rbp]
+	add rbp, 4
+	jmp .Lparse_beatmap_body_hitsound_done
+.Lparse_beatmap_body_hitsound_two:
+	movzx eax, BYTE PTR 3[rbp]
+	add rbp, 5
+.Lparse_beatmap_body_hitsound_done:
 	mov	QWORD PTR 8[r10], rbp
 	mov	DWORD PTR 28[r10], eax
 .Lparse_beatmap_body_block_27:
@@ -786,7 +788,8 @@ parse_beatmap_body:
 .Lparse_beatmap_body_block_39:
 	vpxor	xmm0, xmm0, xmm0
 	mov	BYTE PTR 152[rdi], 1
-	xor	edx, edx
+	# Roll back this failed slider before clearing its published pointers.
+	mov rdx, QWORD PTR [r8]
 	vmovdqu	XMMWORD PTR [r8], xmm0
 	jmp	.Lparse_beatmap_body_block_34
 	.p2align 4,,10
