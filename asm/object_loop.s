@@ -224,43 +224,16 @@ parse_objects_5digit_context:
 	vinserti128	ymm0, ymm0, [r11], 1
 	vpcmpeqb	ymm1, ymm0, ymm6
 	vpmovmskb	r10d, ymm1
-	# Validate timestamp width, coordinate metadata, and single-digit type
-	# independently for both lines. EDX/R8D retain packed shuffle/length.
-	movzx	eax, r10w
-	movzx	ecx, al
-	mov	r9d, ecx
-	shl	r9d, 6
-	test	r9d, eax
-	je	.Lparse_objects_5digit_context_single
-	lea	r9d, [rcx+54]
-	movzx	edx, WORD PTR [r13+r9]
-	movzx	r9d, dl
-	sub	r9d, 3
-	cmp	r9d, 14
-	ja	.Lparse_objects_5digit_context_single
-	dec	ecx
-	mov	r9d, eax
-	shr	r9d, 8
-	test	r9d, ecx
-	je	.Lparse_objects_5digit_context_single
-	mov	eax, r10d
-	shr	eax, 16
-	movzx	ecx, al
-	mov	r9d, ecx
-	shl	r9d, 6
-	test	r9d, eax
-	je	.Lparse_objects_5digit_context_single
-	lea	r9d, [rcx+54]
-	movzx	r8d, WORD PTR [r13+r9]
-	movzx	r9d, r8b
-	sub	r9d, 3
-	cmp	r9d, 14
-	ja	.Lparse_objects_5digit_context_single
-	dec	ecx
-	mov	r9d, eax
-	shr	r9d, 8
-	test	r9d, ecx
-	je	.Lparse_objects_5digit_context_single
+	lea r9, sweep_header_5[rip]
+	movzx eax, r10w
+	movzx edx, WORD PTR [r9+rax*2]
+	test edx, edx
+	je .Lparse_objects_5digit_context_single
+	mov eax, r10d
+	shr eax, 16
+	movzx r8d, WORD PTR [r9+rax*2]
+	test r8d, r8d
+	je .Lparse_objects_5digit_context_single
 	# Signed coordinates and other negative byte offsets use the single path.
 	vpaddb	ymm0, ymm0, ymm8
 	vpmovmskb	r9d, ymm0
@@ -526,37 +499,22 @@ parse_objects_6digit_context:
 	vinserti128	ymm0, ymm0, [r11], 1
 	vpcmpeqb	ymm1, ymm0, ymm6
 	vpmovmskb	r10d, ymm1
-	# Validate timestamp width, coordinate metadata, and single-digit type
-	# independently for both lines. EDX/R8D retain packed shuffle/length.
-	movzx	eax, r10w
-	movzx	ecx, al
-	mov	r9d, ecx
-	shl	r9d, 7
-	test	r9d, eax
-	je	.Lparse_objects_6digit_context_single
-	lea	r9d, [rcx+54]
-	movzx	edx, WORD PTR [r13+r9]
-	movzx	r9d, dl
-	lea	ecx, [r9-3]
-	cmp	ecx, 14
-	ja	.Lparse_objects_6digit_context_single
-	cmp	BYTE PTR -1[rbx+r9], 44
-	jne	.Lparse_objects_6digit_context_single
-	mov	eax, r10d
-	shr	eax, 16
-	movzx	ecx, al
-	mov	r9d, ecx
-	shl	r9d, 7
-	test	r9d, eax
-	je	.Lparse_objects_6digit_context_single
-	lea	r9d, [rcx+54]
-	movzx	r8d, WORD PTR [r13+r9]
-	movzx	r9d, r8b
-	lea	ecx, [r9-3]
-	cmp	ecx, 14
-	ja	.Lparse_objects_6digit_context_single
-	cmp	BYTE PTR -1[r11+r9], 44
-	jne	.Lparse_objects_6digit_context_single
+	lea r9, sweep_header_6[rip]
+	movzx eax, r10w
+	movzx edx, WORD PTR [r9+rax*2]
+	test edx, edx
+	je .Lparse_objects_6digit_context_single
+	mov eax, r10d
+	shr eax, 16
+	movzx r8d, WORD PTR [r9+rax*2]
+	test r8d, r8d
+	je .Lparse_objects_6digit_context_single
+	movzx eax, dl
+	cmp BYTE PTR -1[rbx+rax], 44
+	jne .Lparse_objects_6digit_context_single
+	movzx eax, r8b
+	cmp BYTE PTR -1[r11+rax], 44
+	jne .Lparse_objects_6digit_context_single
 	# Signed coordinates and other negative byte offsets use the single path.
 	vpaddb	ymm0, ymm0, ymm8
 	vpmovmskb	r9d, ymm0
