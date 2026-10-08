@@ -42,3 +42,4 @@
 | `file_io.s` | `read_file` | `read_file(char const*)` |
 | `benchmark.s` | `benchmark_preloaded` | `run_test_prebatch()` |
 | `benchmark.s` | `main` | `main` |
+| `line_scan.s` | `refill_object_lines` | Assembly-only bounded hit-object line scan |

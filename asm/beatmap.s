@@ -90,8 +90,8 @@ parse_beatmap_body:
 	.seh_pushreg	rsi
 	push	rbx
 	.seh_pushreg	rbx
-	sub	rsp, 184
-	.seh_stackalloc	184
+	sub	rsp, 216
+	.seh_stackalloc	216
 	vmovaps	XMMWORD PTR 80[rsp], xmm6
 	.seh_savexmm	xmm6, 80
 	vmovaps	XMMWORD PTR 96[rsp], xmm7
@@ -158,6 +158,10 @@ parse_beatmap_body:
 	cmp	rdx, rax
 	jb	.Lparse_beatmap_body_block_67
 .Lparse_beatmap_body_block_6:
+	# Keep the true input bounds while line discovery advances in chunks.
+	mov QWORD PTR 176[rsp], rbp
+	mov QWORD PTR 184[rsp], rbp
+	mov QWORD PTR 208[rsp], r14
 	mov	eax, 168430090
 	lea	r9, 64[r14]
 	mov	QWORD PTR 536870912[rdi], r14
@@ -183,6 +187,10 @@ parse_beatmap_body:
 	lea	r10, 65[r14+rax]
 	.p2align 4,,10
 	.p2align 3
+	mov eax, 91
+	vmovd xmm4, eax
+	vpbroadcastb ymm4, xmm4
+	jmp .Lscan_header_block
 .Lparse_beatmap_body_block_7:
 	# Hide upcoming cache misses without changing the demand-load bounds.
 	prefetcht0 BYTE PTR 512[rdx]
@@ -273,6 +281,22 @@ parse_beatmap_body:
 	vmovdqa	xmm1, xmm6
 	lea	r15, .Lparse_beatmap_body_block_14[rip]
 .Lparse_beatmap_body_block_13:
+	vmovq rcx, xmm10
+	cmp rbp, rcx
+	jne .Lhave_short_time_lines
+	mov rdx, QWORD PTR 184[rsp]
+	mov r8, QWORD PTR 176[rsp]
+	cmp rdx, r8
+	je .Lparse_beatmap_body_block_24
+	mov rcx, rdi
+	call refill_object_lines
+	mov QWORD PTR 184[rsp], rdx
+	lea rbp, 536870912[rdi]
+	mov rsi, rax
+	vmovq xmm10, rax
+	vmovdqa xmm1, xmm6
+	jmp .Lparse_beatmap_body_block_13
+.Lhave_short_time_lines:
 	mov	rdx, QWORD PTR 0[rbp]
 	xor	r8d, r8d
 	xor	ecx, ecx
@@ -359,12 +383,31 @@ parse_beatmap_body:
 	.p2align 4,,10
 	.p2align 3
 .Lparse_beatmap_body_block_19:
+	mov rax, QWORD PTR 184[rsp]
+	cmp rax, QWORD PTR 176[rsp]
+	jne .Lretry_full_scan
 	mov	rax, QWORD PTR 48[rsp]
 	lea	r14, 1610612736[rdi]
 	mov	r12, r13
 	mov	QWORD PTR 40[rsp], rax
 	mov	r15, rax
 .Lparse_beatmap_body_block_20:
+	vmovq rcx, xmm10
+	cmp rbp, rcx
+	jne .Lhave_4digit_lines
+	mov rdx, QWORD PTR 184[rsp]
+	mov r8, QWORD PTR 176[rsp]
+	cmp rdx, r8
+	je .Lparse_beatmap_body_block_24
+	mov rcx, rdi
+	call refill_object_lines
+	mov QWORD PTR 184[rsp], rdx
+	lea rbp, 536870912[rdi]
+	mov rsi, rax
+	vmovq xmm10, rax
+	vmovdqa xmm1, xmm6
+	jmp .Lparse_beatmap_body_block_20
+.Lhave_4digit_lines:
 	mov	rdx, r15
 	mov	r9, r12
 	mov	r8, r14
@@ -382,21 +425,72 @@ parse_beatmap_body:
 	add	r14, rax
 	add	r15, rdx
 	mov	QWORD PTR 40[rsp], r15
+	vmovq rcx, xmm10
+	cmp rbp, rcx
+	je .Lparse_beatmap_body_block_20
 .Lparse_beatmap_body_block_21:
+	vmovq rcx, xmm10
+	cmp rbp, rcx
+	jne .Lhave_5digit_lines
+	mov rdx, QWORD PTR 184[rsp]
+	mov r8, QWORD PTR 176[rsp]
+	cmp rdx, r8
+	je .Lparse_beatmap_body_block_24
+	mov rcx, rdi
+	call refill_object_lines
+	mov QWORD PTR 184[rsp], rdx
+	lea rbp, 536870912[rdi]
+	mov rsi, rax
+	vmovq xmm10, rax
+	vmovdqa xmm1, xmm6
+	jmp .Lparse_beatmap_body_block_21
+.Lhave_5digit_lines:
 	mov	r15, QWORD PTR 40[rsp]
 	call	parse_objects_5digit_context
 	mov	QWORD PTR 40[rsp], r15
+	vmovq rcx, xmm10
+	cmp rbp, rcx
+	je .Lparse_beatmap_body_block_21
 .Lparse_beatmap_body_block_22:
 	mov	r15, QWORD PTR 40[rsp]
 	vmovq	rcx, xmm10
 	cmp	rcx, rbp
-	je	.Lparse_beatmap_body_block_24
+	jne .Lhave_6digit_lines
+	mov rdx, QWORD PTR 184[rsp]
+	mov r8, QWORD PTR 176[rsp]
+	cmp rdx, r8
+	je .Lparse_beatmap_body_block_24
+	mov rcx, rdi
+	call refill_object_lines
+	mov QWORD PTR 184[rsp], rdx
+	lea rbp, 536870912[rdi]
+	mov rsi, rax
+	vmovq xmm10, rax
+	vmovdqa xmm1, xmm6
+	jmp .Lparse_beatmap_body_block_22
+.Lhave_6digit_lines:
 	call	parse_objects_6digit_context
 	mov	QWORD PTR 40[rsp], r15
+	vmovq rcx, xmm10
+	cmp rbp, rcx
+	je .Lparse_beatmap_body_block_22
 .Lparse_beatmap_body_block_23:
 	vmovq	rcx, xmm10
 	cmp	rcx, rbp
-	je	.Lparse_beatmap_body_block_24
+	jne .Lhave_7digit_lines
+	mov rdx, QWORD PTR 184[rsp]
+	mov r8, QWORD PTR 176[rsp]
+	cmp rdx, r8
+	je .Lparse_beatmap_body_block_24
+	mov rcx, rdi
+	call refill_object_lines
+	mov QWORD PTR 184[rsp], rdx
+	lea rbp, 536870912[rdi]
+	mov rsi, rax
+	vmovq xmm10, rax
+	vmovdqa xmm1, xmm6
+	jmp .Lparse_beatmap_body_block_23
+.Lhave_7digit_lines:
 	mov	rsi, QWORD PTR 40[rsp]
 	mov	r9, r12
 	mov	r8, r14
@@ -405,12 +499,19 @@ parse_beatmap_body:
 	call	parse_objects_7digit
 	mov	rdx, rax
 	mov	eax, eax
+	lea rbp, [rbp+rax*8]
+	mov r8, rax
+	shl r8, 5
+	add r14, r8
 	sal	rax, 4
 	shr	rdx, 32
 	add	rsi, rax
 	sal	rdx, 4
 	mov	QWORD PTR 40[rsp], rsi
 	add	r12, rdx
+	vmovq rcx, xmm10
+	cmp rbp, rcx
+	je .Lparse_beatmap_body_block_23
 .Lparse_beatmap_body_block_24:
 	# Context routines use RBX/R13 as scratch; derive the region bases once.
 	mov	r13d, 2684354560
@@ -640,7 +741,7 @@ parse_beatmap_body:
 	vmovaps	xmm9, XMMWORD PTR 128[rsp]
 	vmovaps	xmm10, XMMWORD PTR 144[rsp]
 	vmovaps	xmm11, XMMWORD PTR 160[rsp]
-	add	rsp, 184
+	add	rsp, 216
 	pop	rbx
 	pop	rsi
 	pop	rdi
@@ -845,11 +946,7 @@ parse_beatmap_body:
 	mov	QWORD PTR [r12], rdx
 	add	r12, rax
 	mov	QWORD PTR 40[rsp], r9
-	cmp	rbp, rsi
-	jne	.Lparse_beatmap_body_block_13
-	mov	rbx, QWORD PTR 56[rsp]
-	mov	r15, r9
-	jmp	.Lparse_beatmap_body_block_20
+	jmp .Lparse_beatmap_body_block_13
 	.p2align 4,,10
 	.p2align 3
 .Lparse_beatmap_body_block_49:
@@ -1176,11 +1273,150 @@ parse_beatmap_body:
 	xor	r9d, r9d
 	jmp	.Lparse_beatmap_body_block_45
 .Lparse_beatmap_body_block_83:
-	mov	r15, rax
-	jmp	.Lparse_beatmap_body_block_20
+	lea r15, .Lparse_beatmap_body_block_14[rip]
+	jmp .Lparse_beatmap_body_block_13
 .Lparse_beatmap_body_block_84:
 	mov	rbx, QWORD PTR 56[rsp]
 	jmp	.Lparse_beatmap_body_block_24
+.Lscan_header_block:
+	# Find the first section marker while building the header line pointers.
+	vpcmpeqb ymm3, ymm4, YMMWORD PTR 31[rdx]
+	vpcmpeqb ymm1, ymm4, YMMWORD PTR -1[rdx]
+	vpmovmskb eax, ymm3
+	vpmovmskb ecx, ymm1
+	shl rax, 32
+	or rax, rcx
+	and rax, rbx
+	test rax, rax
+	je .Lprefix_extract
+.Lprefix_check:
+	xor r11d, r11d
+	tzcnt r11, rax
+	lea r11, -1[rdx+r11]
+	movabs rcx, 7307761438757046363
+	cmp QWORD PTR [r11], rcx
+	jne .Lprefix_clear
+	cmp r11, QWORD PTR 208[rsp]
+	je .Lbegin_object_chunks
+	cmp BYTE PTR -1[r11], 10
+	je .Lbegin_object_chunks
+.Lprefix_clear:
+	blsr rax, rax
+	jne .Lprefix_check
+.Lprefix_extract:
+	# Hide upcoming cache misses without changing the demand-load bounds.
+	prefetcht0 BYTE PTR 512[rdx]
+	vpcmpeqb	ymm3, ymm0, YMMWORD PTR 31[rdx]
+	vpcmpeqb	ymm1, ymm0, YMMWORD PTR -1[rdx]
+	xor	r11d, r11d
+	vpmovmskb	eax, ymm3
+	vpmovmskb	ecx, ymm1
+	sal	rax, 32
+	or	rax, rcx
+	and rax, rbx
+	mov rbx, -1
+	# Emit three speculative pointers; only popcount entries become visible.
+	xor	ecx, ecx
+	popcnt	rcx, rax
+	xor	r11d, r11d
+	tzcnt	r11, rax
+	blsr	rax, rax
+	add	r11, rdx
+	mov	QWORD PTR [rsi], r11
+	xor	r11d, r11d
+	tzcnt	r11, rax
+	blsr	rax, rax
+	add	r11, rdx
+	mov	QWORD PTR 8[rsi], r11
+	xor	r11d, r11d
+	tzcnt	r11, rax
+	add	r11, rdx
+	mov	QWORD PTR 16[rsi], r11
+	cmp	ecx, 3
+	jg	.Lscan_header_overflow
+	lea	rsi, [rsi+rcx*8]
+.Lscan_header_next:
+	add	rdx, 64
+	cmp	r10, rdx
+	jne	.Lscan_header_block
+	and	r8, -64
+	lea	r14, [r9+r8]
+	jmp .Lparse_beatmap_body_block_9
+.Lscan_header_overflow:
+	add	rsi, 24
+	blsr	rax, rax
+	je	.Lscan_header_next
+	mov	r14, rsi
+	mov	rcx, rax
+	.p2align 5
+	.p2align 4,,10
+	.p2align 3
+.Lscan_header_overflow_loop:
+	xor	r11d, r11d
+	add	r14, 8
+	tzcnt	r11, rcx
+	add	r11, rdx
+	blsr	rcx, rcx
+	mov	QWORD PTR -8[r14], r11
+	jne	.Lscan_header_overflow_loop
+	popcnt	rax, rax
+	dec	eax
+	lea	rsi, 8[rsi+rax*8]
+	jmp	.Lscan_header_next
+	.p2align 4,,10
+	.p2align 3
+.Lbegin_object_chunks:
+	# Include the complete header plus the first 1 KiB of object input.
+	add r11, 1024
+	and r11, -64
+	cmp r11, rbp
+	cmovb rbp, r11
+	mov QWORD PTR 184[rsp], rbp
+	mov r8, rbp
+	sub r8, r9
+	mov r10, r8
+	and r10, -64
+	lea r10, 1[r9+r10]
+	jmp .Lparse_beatmap_body_block_7
+.Lretry_full_scan:
+	# An early section marker must not truncate the header parser's input.
+	vpxor xmm0, xmm0, xmm0
+	vmovdqu YMMWORD PTR 36[rdi], ymm0
+	mov DWORD PTR 68[rdi], 0
+	mov BYTE PTR 152[rdi], 0
+	mov r14, QWORD PTR 208[rsp]
+	mov rbp, QWORD PTR 176[rsp]
+	mov QWORD PTR 184[rsp], rbp
+	lea r12, 536870912[rdi]
+	mov r13d, 2684354560
+	add r13, rdi
+
+	mov	eax, 168430090
+	lea	r9, 64[r14]
+	mov	QWORD PTR 536870912[rdi], r14
+	lea	rsi, 536870920[rdi]
+	vmovd	xmm2, eax
+	vpbroadcastd	ymm2, xmm2
+	cmp	rbp, r9
+	jb	.Lparse_beatmap_body_block_9
+	# Align the scan base; ignore prefix bytes in the first newline mask.
+	mov ecx, r14d
+	and ecx, 31
+	mov rbx, -1
+	shl rbx, cl
+	and r14, -32
+	lea r9, 64[r14]
+	mov r8, rbp
+	lea	rdx, 1[r14]
+	vmovdqa	ymm0, ymm2
+	sub	r8, r14
+	sub	r8, 64
+	mov	rax, r8
+	and	rax, -64
+	lea	r10, 65[r14+rax]
+	.p2align 4,,10
+	.p2align 3
+	jmp .Lparse_beatmap_body_block_7
 	.seh_endproc
 
 # parse_beatmap
