@@ -226,12 +226,16 @@ parse_objects_5digit_context:
 	vpmovmskb	r10d, ymm1
 	lea r9, sweep_header_5[rip]
 	movzx eax, r10w
-	movzx edx, WORD PTR [r9+rax*2]
+	shl eax, 5
+	movzx edx, WORD PTR [r9+rax]
+	vmovdqu xmm1, XMMWORD PTR 16[r9+rax]
 	test edx, edx
 	je .Lparse_objects_5digit_context_single
 	mov eax, r10d
 	shr eax, 16
-	movzx r8d, WORD PTR [r9+rax*2]
+	shl eax, 5
+	movzx r8d, WORD PTR [r9+rax]
+	vinserti128 ymm1, ymm1, XMMWORD PTR 16[r9+rax], 1
 	test r8d, r8d
 	je .Lparse_objects_5digit_context_single
 	# Signed coordinates and other negative byte offsets use the single path.
@@ -239,12 +243,6 @@ parse_objects_5digit_context:
 	vpmovmskb	r9d, ymm0
 	andn	r9d, r10d, r9d
 	jne	.Lparse_objects_5digit_context_single
-	mov	r9d, edx
-	shr	r9d, 8
-	mov	r10d, r8d
-	shr	r10d, 8
-	vmovdqu	xmm1, [rsi+r9*8]
-	vinserti128	ymm1, ymm1, [rsi+r10*8], 1
 	# Same conversion/clamping as the single path, in two independent lanes.
 	vpshufb	ymm0, ymm0, ymm1
 	vpmaddubsw	ymm0, ymm0, ymm4
@@ -501,12 +499,16 @@ parse_objects_6digit_context:
 	vpmovmskb	r10d, ymm1
 	lea r9, sweep_header_6[rip]
 	movzx eax, r10w
-	movzx edx, WORD PTR [r9+rax*2]
+	shl eax, 5
+	movzx edx, WORD PTR [r9+rax]
+	vmovdqu xmm1, XMMWORD PTR 16[r9+rax]
 	test edx, edx
 	je .Lparse_objects_6digit_context_single
 	mov eax, r10d
 	shr eax, 16
-	movzx r8d, WORD PTR [r9+rax*2]
+	shl eax, 5
+	movzx r8d, WORD PTR [r9+rax]
+	vinserti128 ymm1, ymm1, XMMWORD PTR 16[r9+rax], 1
 	test r8d, r8d
 	je .Lparse_objects_6digit_context_single
 	movzx eax, dl
@@ -520,12 +522,6 @@ parse_objects_6digit_context:
 	vpmovmskb	r9d, ymm0
 	andn	r9d, r10d, r9d
 	jne	.Lparse_objects_6digit_context_single
-	mov	r9d, edx
-	shr	r9d, 8
-	mov	r10d, r8d
-	shr	r10d, 8
-	vmovdqu	xmm1, [rsi+r9*8]
-	vinserti128	ymm1, ymm1, [rsi+r10*8], 1
 	# Same conversion/clamping as the single path, in two independent lanes.
 	vpshufb	ymm0, ymm0, ymm1
 	vpmaddubsw	ymm0, ymm0, ymm4
