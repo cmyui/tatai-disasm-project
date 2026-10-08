@@ -571,14 +571,11 @@ parse_beatmap_body:
 	jne	.Lparse_beatmap_body_block_40
 	blsmsk	r8d, r9d
 	and	r8d, eax
-	# Bit zero is clear after the sign check. Each even mask owns 32 bytes.
-	mov	eax, r8d
-	shl	eax, 4
-	add	rax, r15
-	mov	rcx, QWORD PTR [rax]
+	# Even masks index eight metadata bytes and sixteen shuffle bytes separately.
+	mov rcx, QWORD PTR [r15+r8*4]
 	cmp	r8d, ecx
 	jne	.Lparse_beatmap_body_block_38
-	vpshufb	xmm0, xmm0, XMMWORD PTR 16[rax]
+	vpshufb	xmm0, xmm0, XMMWORD PTR 262144[r15+r8*8]
 	shr	rcx, 32
 	vpmaddubsw	xmm0, xmm0, xmm9
 	vpmaddwd	xmm0, xmm0, xmm7
