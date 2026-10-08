@@ -26,7 +26,7 @@ refill_object_lines:
 	je	.Lrefill_object_lines_tail
 	.p2align 4
 .Lrefill_object_lines_scan:
-	prefetcht0	BYTE PTR 512[rdx]
+	prefetcht0	BYTE PTR 1024[rdx]
 	vpcmpeqb	ymm1, ymm0, YMMWORD PTR [rdx]
 	vpcmpeqb	ymm2, ymm0, YMMWORD PTR 32[rdx]
 	vpmovmskb	eax, ymm1
