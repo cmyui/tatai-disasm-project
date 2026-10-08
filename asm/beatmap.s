@@ -193,7 +193,7 @@ parse_beatmap_body:
 	jmp .Lscan_header_block
 .Lparse_beatmap_body_block_7:
 	# Hide upcoming cache misses without changing the demand-load bounds.
-	prefetcht0 BYTE PTR 512[rdx]
+	prefetcht0 BYTE PTR 1024[rdx]
 	vpcmpeqb	ymm3, ymm0, YMMWORD PTR 31[rdx]
 	vpcmpeqb	ymm1, ymm0, YMMWORD PTR -1[rdx]
 	xor	r11d, r11d
@@ -1308,7 +1308,7 @@ parse_beatmap_body:
 	jne .Lprefix_check
 .Lprefix_extract:
 	# Hide upcoming cache misses without changing the demand-load bounds.
-	prefetcht0 BYTE PTR 512[rdx]
+	prefetcht0 BYTE PTR 1024[rdx]
 	vpcmpeqb	ymm3, ymm0, YMMWORD PTR 31[rdx]
 	vpcmpeqb	ymm1, ymm0, YMMWORD PTR -1[rdx]
 	xor	r11d, r11d
