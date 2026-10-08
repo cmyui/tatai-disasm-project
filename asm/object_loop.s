@@ -186,7 +186,8 @@ parse_objects_4digit:
 # Internal context: RBP lines, R15 headers, R14 bodies, R12 deferrals, advanced
 # in place. Preserves RDI, XMM6 (comma), XMM8 (digit offset), XMM9
 # (result shuffle), XMM10 (line end); clobbers RAX/RCX/RDX/R8-R11/RBX/R13/RSI
-# and XMM0-XMM5. Only the 40-byte outgoing Windows call frame is allocated.
+# and YMM0-YMM5 plus upper YMM6/YMM8/YMM9 halves.
+# Only the 40-byte outgoing Windows call frame is allocated.
 # Source: Parse objects using 5-digit timestamps; see internal context above.
 .section .text$parse_objects_5digit_context,"x"
 .p2align 4
@@ -201,15 +202,113 @@ parse_objects_5digit_context:
 	mov	rbx, QWORD PTR [rbp]
 	test	rbx, rbx
 	je	.Lparse_objects_5digit_context_block_14
-	vmovdqa	xmm4, XMMWORD PTR constant_2[rip]
+	vbroadcasti128	ymm4, XMMWORD PTR constant_2[rip]
 	lea	r13, object_5_coordinate_shuffles[rip]
 	lea	rsi, object_5_header_shuffles[rip]
-	vmovdqa	xmm3, XMMWORD PTR constant_3[rip]
-	vmovdqa	xmm2, XMMWORD PTR constant_5[rip]
-	vmovdqa	xmm5, XMMWORD PTR constant_6[rip]
+	vbroadcasti128	ymm3, XMMWORD PTR constant_3[rip]
+	vbroadcasti128	ymm2, XMMWORD PTR constant_5[rip]
+	vbroadcasti128	ymm5, XMMWORD PTR constant_6[rip]
+	# Upper YMM halves are volatile; retain the caller's low XMM halves.
+	vinserti128	ymm6, ymm6, xmm6, 1
+	vinserti128	ymm8, ymm8, xmm8, 1
+	vinserti128	ymm9, ymm9, xmm9, 1
 	.p2align 4,,10
 	.p2align 3
 .Lparse_objects_5digit_context_block_1:
+	# Two padded input lines, one per 128-bit lane. Do not cross a sentinel.
+	# Reject either lane before changing any output or context cursor.
+	mov	r11, QWORD PTR 8[rbp]
+	test	r11, r11
+	je	.Lparse_objects_5digit_context_single
+	vmovdqu	xmm0, [rbx]
+	vinserti128	ymm0, ymm0, [r11], 1
+	vpcmpeqb	ymm1, ymm0, ymm6
+	vpmovmskb	r10d, ymm1
+	# Validate timestamp width, coordinate metadata, and single-digit type
+	# independently for both lines. EDX/R8D retain packed shuffle/length.
+	movzx	eax, r10w
+	movzx	ecx, al
+	mov	r9d, ecx
+	shl	r9d, 6
+	test	r9d, eax
+	je	.Lparse_objects_5digit_context_single
+	lea	r9d, [rcx+54]
+	movzx	edx, WORD PTR [r13+r9]
+	movzx	r9d, dl
+	sub	r9d, 3
+	cmp	r9d, 14
+	ja	.Lparse_objects_5digit_context_single
+	dec	ecx
+	mov	r9d, eax
+	shr	r9d, 8
+	test	r9d, ecx
+	je	.Lparse_objects_5digit_context_single
+	mov	eax, r10d
+	shr	eax, 16
+	movzx	ecx, al
+	mov	r9d, ecx
+	shl	r9d, 6
+	test	r9d, eax
+	je	.Lparse_objects_5digit_context_single
+	lea	r9d, [rcx+54]
+	movzx	r8d, WORD PTR [r13+r9]
+	movzx	r9d, r8b
+	sub	r9d, 3
+	cmp	r9d, 14
+	ja	.Lparse_objects_5digit_context_single
+	dec	ecx
+	mov	r9d, eax
+	shr	r9d, 8
+	test	r9d, ecx
+	je	.Lparse_objects_5digit_context_single
+	# Signed coordinates and other negative byte offsets use the single path.
+	vpaddb	ymm0, ymm0, ymm8
+	vpmovmskb	r9d, ymm0
+	andn	r9d, r10d, r9d
+	jne	.Lparse_objects_5digit_context_single
+	mov	r9d, edx
+	shr	r9d, 8
+	mov	r10d, r8d
+	shr	r10d, 8
+	vmovdqu	xmm1, [rsi+r9*8]
+	vinserti128	ymm1, ymm1, [rsi+r10*8], 1
+	# Same conversion/clamping as the single path, in two independent lanes.
+	vpshufb	ymm0, ymm0, ymm1
+	vpmaddubsw	ymm0, ymm0, ymm4
+	vpmaddwd	ymm0, ymm0, ymm3
+	vpshufb	ymm0, ymm0, ymm9
+	vpmaddwd	ymm0, ymm0, ymm2
+	vpminud	ymm0, ymm0, ymm5
+	vmovdqu	[r15], ymm0
+	movzx	edx, dl
+	movzx	r8d, r8b
+	add	rdx, rbx
+	add	r8, r11
+	# For a single decimal type digit, ASCII bit 1 is the parsed slider bit.
+	# Queue decisions need not wait for SIMD conversion or reload its store.
+	# Preserve the original speculative deferral writes and their ordering.
+	movzx	eax, BYTE PTR -2[rdx]
+	shl	eax, 3
+	and	eax, 16
+	mov	[r12], rdx
+	mov	8[r12], r14
+	add	r12, rax
+	add	r14, 32
+	movzx	eax, BYTE PTR -2[r8]
+	shl	eax, 3
+	and	eax, 16
+	mov	[r12], r8
+	mov	8[r12], r14
+	add	r12, rax
+	add	r14, 32
+	add	r15, 32
+	add	rbp, 16
+	mov	rbx, [rbp]
+	test	rbx, rbx
+	jne	.Lparse_objects_5digit_context_block_1
+	jmp	.Lparse_objects_5digit_context_block_5
+.Lparse_objects_5digit_context_single:
+	# Original decoder handles odd tails, width transitions and slow shapes.
 	vmovdqu	xmm0, XMMWORD PTR [rbx]
 	vpcmpeqb	xmm1, xmm0, xmm6
 	vpmovmskb	eax, xmm1
@@ -273,6 +372,10 @@ parse_objects_5digit_context:
 	inc	rbx
 	add	rbp, 8
 	call	defer_object_header
+	# Upper YMM halves are volatile; retain the caller's low XMM halves.
+	vinserti128	ymm6, ymm6, xmm6, 1
+	vinserti128	ymm8, ymm8, xmm8, 1
+	vinserti128	ymm9, ymm9, xmm9, 1
 	mov	eax, DWORD PTR 12[r15]
 	sal	eax, 3
 	mov	QWORD PTR [r12], rbx
@@ -284,10 +387,10 @@ parse_objects_5digit_context:
 	add	r14, 32
 	test	rbx, rbx
 	je	.Lparse_objects_5digit_context_block_5
-	vmovdqa	xmm4, XMMWORD PTR constant_2[rip]
-	vmovdqa	xmm3, XMMWORD PTR constant_3[rip]
-	vmovdqa	xmm2, XMMWORD PTR constant_5[rip]
-	vmovdqa	xmm5, XMMWORD PTR constant_6[rip]
+	vbroadcasti128	ymm4, XMMWORD PTR constant_2[rip]
+	vbroadcasti128	ymm3, XMMWORD PTR constant_3[rip]
+	vbroadcasti128	ymm2, XMMWORD PTR constant_5[rip]
+	vbroadcasti128	ymm5, XMMWORD PTR constant_6[rip]
 	jmp	.Lparse_objects_5digit_context_block_1
 	.p2align 4,,10
 	.p2align 3
@@ -343,7 +446,8 @@ parse_objects_5digit_context:
 # Internal context: RBP lines, R15 headers, R14 bodies, R12 deferrals, advanced
 # in place. Preserves RDI, XMM6 (comma), XMM8 (digit offset), XMM9
 # (result shuffle), XMM10 (line end); clobbers RAX/RCX/RDX/R8-R11/RBX/R13/RSI
-# and XMM0-XMM5. Only the 40-byte outgoing Windows call frame is allocated.
+# and YMM0-YMM5 plus upper YMM6/YMM8/YMM9 halves.
+# Only the 40-byte outgoing Windows call frame is allocated.
 # Source: Parse objects using 6-digit timestamps; see internal context above.
 .section .text$parse_objects_6digit_context,"x"
 .p2align 4
@@ -358,12 +462,16 @@ parse_objects_6digit_context:
 	mov	rbx, QWORD PTR [rbp]
 	test	rbx, rbx
 	je	.Lparse_objects_6digit_context_block_17
-	vmovdqa	xmm4, XMMWORD PTR constant_9[rip]
-	vmovdqa	xmm3, XMMWORD PTR constant_10[rip]
-	vmovdqa	xmm2, XMMWORD PTR constant_11[rip]
+	vbroadcasti128	ymm4, XMMWORD PTR constant_9[rip]
+	vbroadcasti128	ymm3, XMMWORD PTR constant_10[rip]
+	vbroadcasti128	ymm2, XMMWORD PTR constant_11[rip]
 	lea	rsi, object_6_header_shuffles[rip]
 	lea	r13, object_6_coordinate_shuffles[rip]
-	vmovdqa	xmm5, XMMWORD PTR constant_6[rip]
+	vbroadcasti128	ymm5, XMMWORD PTR constant_6[rip]
+	# Upper YMM halves are volatile; retain the caller's low XMM halves.
+	vinserti128	ymm6, ymm6, xmm6, 1
+	vinserti128	ymm8, ymm8, xmm8, 1
+	vinserti128	ymm9, ymm9, xmm9, 1
 	jmp	.Lparse_objects_6digit_context_block_6
 	.p2align 4,,10
 	.p2align 3
@@ -409,6 +517,94 @@ parse_objects_6digit_context:
 	test	rbx, rbx
 	je	.Lparse_objects_6digit_context_block_7
 .Lparse_objects_6digit_context_block_6:
+	# Two padded input lines, one per 128-bit lane. Do not cross a sentinel.
+	# Reject either lane before changing any output or context cursor.
+	mov	r11, QWORD PTR 8[rbp]
+	test	r11, r11
+	je	.Lparse_objects_6digit_context_single
+	vmovdqu	xmm0, [rbx]
+	vinserti128	ymm0, ymm0, [r11], 1
+	vpcmpeqb	ymm1, ymm0, ymm6
+	vpmovmskb	r10d, ymm1
+	# Validate timestamp width, coordinate metadata, and single-digit type
+	# independently for both lines. EDX/R8D retain packed shuffle/length.
+	movzx	eax, r10w
+	movzx	ecx, al
+	mov	r9d, ecx
+	shl	r9d, 7
+	test	r9d, eax
+	je	.Lparse_objects_6digit_context_single
+	lea	r9d, [rcx+54]
+	movzx	edx, WORD PTR [r13+r9]
+	movzx	r9d, dl
+	lea	ecx, [r9-3]
+	cmp	ecx, 14
+	ja	.Lparse_objects_6digit_context_single
+	cmp	BYTE PTR -1[rbx+r9], 44
+	jne	.Lparse_objects_6digit_context_single
+	mov	eax, r10d
+	shr	eax, 16
+	movzx	ecx, al
+	mov	r9d, ecx
+	shl	r9d, 7
+	test	r9d, eax
+	je	.Lparse_objects_6digit_context_single
+	lea	r9d, [rcx+54]
+	movzx	r8d, WORD PTR [r13+r9]
+	movzx	r9d, r8b
+	lea	ecx, [r9-3]
+	cmp	ecx, 14
+	ja	.Lparse_objects_6digit_context_single
+	cmp	BYTE PTR -1[r11+r9], 44
+	jne	.Lparse_objects_6digit_context_single
+	# Signed coordinates and other negative byte offsets use the single path.
+	vpaddb	ymm0, ymm0, ymm8
+	vpmovmskb	r9d, ymm0
+	andn	r9d, r10d, r9d
+	jne	.Lparse_objects_6digit_context_single
+	mov	r9d, edx
+	shr	r9d, 8
+	mov	r10d, r8d
+	shr	r10d, 8
+	vmovdqu	xmm1, [rsi+r9*8]
+	vinserti128	ymm1, ymm1, [rsi+r10*8], 1
+	# Same conversion/clamping as the single path, in two independent lanes.
+	vpshufb	ymm0, ymm0, ymm1
+	vpmaddubsw	ymm0, ymm0, ymm4
+	vpmaddwd	ymm0, ymm0, ymm3
+	vpshufb	ymm0, ymm0, ymm9
+	vpmaddwd	ymm0, ymm0, ymm2
+	vpminud	ymm0, ymm0, ymm5
+	vmovdqu	[r15], ymm0
+	movzx	edx, dl
+	movzx	r8d, r8b
+	add	rdx, rbx
+	add	r8, r11
+	# For a single decimal type digit, ASCII bit 1 is the parsed slider bit.
+	# Queue decisions need not wait for SIMD conversion or reload its store.
+	# Preserve the original speculative deferral writes and their ordering.
+	movzx	eax, BYTE PTR -2[rdx]
+	shl	eax, 3
+	and	eax, 16
+	mov	[r12], rdx
+	mov	8[r12], r14
+	add	r12, rax
+	add	r14, 32
+	movzx	eax, BYTE PTR -2[r8]
+	shl	eax, 3
+	and	eax, 16
+	mov	[r12], r8
+	mov	8[r12], r14
+	add	r12, rax
+	add	r14, 32
+	add	r15, 32
+	add	rbp, 16
+	mov	rbx, [rbp]
+	test	rbx, rbx
+	jne	.Lparse_objects_6digit_context_block_6
+	jmp	.Lparse_objects_6digit_context_block_7
+.Lparse_objects_6digit_context_single:
+	# Original decoder handles odd tails, width transitions and slow shapes.
 	vmovdqu	xmm0, XMMWORD PTR 0[rbx]
 	vpcmpeqb	xmm1, xmm0, xmm6
 	vpmovmskb	ecx, xmm1
@@ -460,12 +656,16 @@ parse_objects_6digit_context:
 	mov	rdx, r15
 	mov	rcx, rbx
 	call	defer_object_header
+	# Upper YMM halves are volatile; retain the caller's low XMM halves.
+	vinserti128	ymm6, ymm6, xmm6, 1
+	vinserti128	ymm8, ymm8, xmm8, 1
+	vinserti128	ymm9, ymm9, xmm9, 1
 	mov	eax, DWORD PTR 12[r15]
-	vmovdqa	xmm5, XMMWORD PTR constant_6[rip]
+	vbroadcasti128	ymm5, XMMWORD PTR constant_6[rip]
 	mov	edx, 1
-	vmovdqa	xmm2, XMMWORD PTR constant_11[rip]
-	vmovdqa	xmm3, XMMWORD PTR constant_10[rip]
-	vmovdqa	xmm4, XMMWORD PTR constant_9[rip]
+	vbroadcasti128	ymm2, XMMWORD PTR constant_11[rip]
+	vbroadcasti128	ymm3, XMMWORD PTR constant_10[rip]
+	vbroadcasti128	ymm4, XMMWORD PTR constant_9[rip]
 	jmp	.Lparse_objects_6digit_context_block_5
 	.p2align 4,,10
 	.p2align 3
