@@ -195,9 +195,11 @@ parse_beatmap_body:
 	or	rax, rcx
 	and rax, rbx
 	mov rbx, -1
+	# Emit three speculative pointers; only popcount entries become visible.
 	xor	ecx, ecx
-	tzcnt	r11, rax
 	popcnt	rcx, rax
+	xor	r11d, r11d
+	tzcnt	r11, rax
 	blsr	rax, rax
 	add	r11, rdx
 	mov	QWORD PTR [rsi], r11
@@ -208,14 +210,9 @@ parse_beatmap_body:
 	mov	QWORD PTR 8[rsi], r11
 	xor	r11d, r11d
 	tzcnt	r11, rax
-	blsr	rax, rax
 	add	r11, rdx
 	mov	QWORD PTR 16[rsi], r11
-	xor	r11d, r11d
-	tzcnt	r11, rax
-	add	r11, rdx
-	mov	QWORD PTR 24[rsi], r11
-	cmp	ecx, 4
+	cmp	ecx, 3
 	jg	.Lparse_beatmap_body_block_15
 	lea	rsi, [rsi+rcx*8]
 .Lparse_beatmap_body_block_8:
@@ -244,6 +241,12 @@ parse_beatmap_body:
 	vmovdqu	XMMWORD PTR [rsi], xmm0
 	mov	DWORD PTR 40[rdi], eax
 	call	parse_beatmap_header
+	# Persistent object-phase context, shared across the timestamp-width runs.
+	vmovq	xmm10, rsi
+	mov	edx, -791621424
+	vmovd	xmm8, edx
+	vpbroadcastd	xmm8, xmm8
+	vmovdqa	xmm9, XMMWORD PTR constant_4[rip]
 	mov	rbp, rax
 	cmp	rax, rsi
 	je	.Lparse_beatmap_body_block_19
@@ -303,7 +306,7 @@ parse_beatmap_body:
 	.p2align 4,,10
 	.p2align 3
 .Lparse_beatmap_body_block_15:
-	add	rsi, 32
+	add	rsi, 24
 	blsr	rax, rax
 	je	.Lparse_beatmap_body_block_8
 	mov	r14, rsi
@@ -381,46 +384,18 @@ parse_beatmap_body:
 	mov	QWORD PTR 40[rsp], r15
 .Lparse_beatmap_body_block_21:
 	mov	r15, QWORD PTR 40[rsp]
-	mov	r9, r12
-	mov	r8, r14
-	mov	rcx, rbp
-	mov	rdx, r15
-	call	parse_objects_5digit
-	mov	rdx, rax
-	mov	eax, eax
-	shr	rdx, 32
-	lea	rbp, 0[rbp+rax*8]
-	sal	rdx, 4
-	add	r12, rdx
-	mov	rdx, rax
-	sal	rax, 5
-	sal	rdx, 4
-	add	r14, rax
-	add	r15, rdx
+	call	parse_objects_5digit_context
 	mov	QWORD PTR 40[rsp], r15
 .Lparse_beatmap_body_block_22:
-	cmp	rsi, rbp
-	je	.Lparse_beatmap_body_block_24
 	mov	r15, QWORD PTR 40[rsp]
-	mov	r9, r12
-	mov	r8, r14
-	mov	rcx, rbp
-	mov	rdx, r15
-	call	parse_objects_6digit
-	mov	rdx, rax
-	mov	eax, eax
-	shr	rdx, 32
-	lea	rbp, 0[rbp+rax*8]
-	sal	rdx, 4
-	add	r12, rdx
-	mov	rdx, rax
-	sal	rax, 5
-	sal	rdx, 4
-	add	r14, rax
-	add	r15, rdx
+	vmovq	rcx, xmm10
+	cmp	rcx, rbp
+	je	.Lparse_beatmap_body_block_24
+	call	parse_objects_6digit_context
 	mov	QWORD PTR 40[rsp], r15
 .Lparse_beatmap_body_block_23:
-	cmp	rsi, rbp
+	vmovq	rcx, xmm10
+	cmp	rcx, rbp
 	je	.Lparse_beatmap_body_block_24
 	mov	rsi, QWORD PTR 40[rsp]
 	mov	r9, r12
@@ -437,10 +412,14 @@ parse_beatmap_body:
 	mov	QWORD PTR 40[rsp], rsi
 	add	r12, rdx
 .Lparse_beatmap_body_block_24:
+	# Context routines use RBX/R13 as scratch; derive the region bases once.
+	mov	r13d, 2684354560
+	add	r13, rdi
 	cmp	r13, r12
 	je	.Lparse_beatmap_body_block_58
 	mov	eax, -791621424
-	mov	rdx, rbx
+	mov	edx, 3221225472
+	add	rdx, rdi
 	vmovdqa	xmm11, XMMWORD PTR constant_34[rip]
 	vmovdqa	xmm9, XMMWORD PTR constant_35[rip]
 	vmovd	xmm5, eax
@@ -492,25 +471,21 @@ parse_beatmap_body:
 	cmp	r8d, ecx
 	jne	.Lparse_beatmap_body_block_38
 	vpshufb	xmm0, xmm0, XMMWORD PTR 16[rax]
-	mov	eax, r9d
 	shr	rcx, 32
 	vpmaddubsw	xmm0, xmm0, xmm9
-	and	eax, r8d
 	vpmaddwd	xmm0, xmm0, xmm7
-	sal	eax, 8
 	vmovdqu	XMMWORD PTR [rdx], xmm0
-	or	eax, ecx
-.Lparse_beatmap_body_block_28:
-	test	eax, eax
+	# Consume the table metadata directly instead of constructing and then
+	# unpacking the C++ helper's packed return value.
+	test	ecx, ecx
 	je	.Lparse_beatmap_body_block_38
-.Lparse_beatmap_body_block_29:
-	movzx	ecx, al
-	lea	rdx, [rdx+rcx*8]
-	mov	ecx, eax
+	movzx	eax, cl
+	lea	rdx, [rdx+rax*8]
 	shr	ecx, 24
 	add	rbp, rcx
-	test	eax, 16776960
+	test	r9d, r8d
 	je	.Lparse_beatmap_body_block_27
+.Lparse_beatmap_body_slider_finish:
 	movzx	eax, BYTE PTR 0[rbp]
 	movzx	ecx, BYTE PTR 1[rbp]
 	mov	QWORD PTR 8[r10], rdx
@@ -675,6 +650,18 @@ parse_beatmap_body:
 	pop	r14
 	pop	r15
 	ret
+.Lparse_beatmap_body_block_28:
+	test	eax, eax
+	je	.Lparse_beatmap_body_block_38
+.Lparse_beatmap_body_block_29:
+	movzx	ecx, al
+	lea	rdx, [rdx+rcx*8]
+	mov	ecx, eax
+	shr	ecx, 24
+	add	rbp, rcx
+	test	eax, 16776960
+	je	.Lparse_beatmap_body_block_27
+	jmp	.Lparse_beatmap_body_slider_finish
 	.p2align 4,,10
 	.p2align 3
 .Lparse_beatmap_body_block_37:

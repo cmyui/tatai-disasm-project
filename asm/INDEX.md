@@ -31,8 +31,8 @@
 | `headers.s` | `parse_timing_points_legacy` | `char const** parse_timing_points<false>(_memory_region_header*, char const**, char const**)` |
 | `headers.s` | `parse_beatmap_header` | `parse_beatmap_header(_memory_region_header*, char const**, char const**)` |
 | `object_loop.s` | `parse_objects_4digit` | `_Z17parse_object_loopITnDaXadL_ZN12parse_4_time26parse_object_4digit_singleEPKcP14_object_headerEEEyPKS2_S4_P12_slider_dataP16_slider_deferral` |
-| `object_loop.s` | `parse_objects_5digit` | `_Z17parse_object_loopITnDaXadL_ZN12parse_5_time26parse_object_5digit_singleEPKcP14_object_headerEEEyPKS2_S4_P12_slider_dataP16_slider_deferral` |
-| `object_loop.s` | `parse_objects_6digit` | `_Z17parse_object_loopITnDaXadL_ZN12parse_6_time26parse_object_6digit_singleEPKcP14_object_headerEEEyPKS2_S4_P12_slider_dataP16_slider_deferral` |
+| `object_loop.s` | `parse_objects_5digit_context` | `_Z17parse_object_loopITnDaXadL_ZN12parse_5_time26parse_object_5digit_singleEPKcP14_object_headerEEEyPKS2_S4_P12_slider_dataP16_slider_deferral` |
+| `object_loop.s` | `parse_objects_6digit_context` | `_Z17parse_object_loopITnDaXadL_ZN12parse_6_time26parse_object_6digit_singleEPKcP14_object_headerEEEyPKS2_S4_P12_slider_dataP16_slider_deferral` |
 | `object_loop.s` | `parse_objects_7digit` | `_Z17parse_object_loopITnDaXadL_ZN12parse_7_time26parse_object_7digit_singleEPKcP14_object_headerEEEyPKS2_S4_P12_slider_dataP16_slider_deferral` |
 | `beatmap.s` | `parse_beatmap_body` | `parse_beatmap_from_memory(_memory_region_header*, char const*, char const*) [clone .part.0]` |
 | `beatmap.s` | `parse_beatmap` | `parse_beatmap_from_memory(_memory_region_header*, char const*, char const*)` |
