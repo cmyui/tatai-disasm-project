@@ -564,9 +564,9 @@ parse_beatmap_body:
 	jne	.Lparse_beatmap_body_block_40
 	blsmsk	r8d, r9d
 	and	r8d, eax
-	imul	eax, r8d, 480925
-	shr	eax, 10
-	and	eax, 8160
+	# Bit zero is clear after the sign check. Each even mask owns 32 bytes.
+	mov	eax, r8d
+	shl	eax, 4
 	add	rax, r15
 	mov	rcx, QWORD PTR [rax]
 	cmp	r8d, ecx
