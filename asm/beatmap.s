@@ -166,7 +166,14 @@ parse_beatmap_body:
 	vpbroadcastd	ymm2, xmm2
 	cmp	rbp, r9
 	jb	.Lparse_beatmap_body_block_9
-	mov	r8, rbp
+	# Align the scan base; ignore prefix bytes in the first newline mask.
+	mov ecx, r14d
+	and ecx, 31
+	mov rbx, -1
+	shl rbx, cl
+	and r14, -32
+	lea r9, 64[r14]
+	mov r8, rbp
 	lea	rdx, 1[r14]
 	vmovdqa	ymm0, ymm2
 	sub	r8, r14
@@ -177,6 +184,8 @@ parse_beatmap_body:
 	.p2align 4,,10
 	.p2align 3
 .Lparse_beatmap_body_block_7:
+	# Hide upcoming cache misses without changing the demand-load bounds.
+	prefetcht0 BYTE PTR 512[rdx]
 	vpcmpeqb	ymm3, ymm0, YMMWORD PTR 31[rdx]
 	vpcmpeqb	ymm1, ymm0, YMMWORD PTR -1[rdx]
 	xor	r11d, r11d
@@ -184,6 +193,8 @@ parse_beatmap_body:
 	vpmovmskb	ecx, ymm1
 	sal	rax, 32
 	or	rax, rcx
+	and rax, rbx
+	mov rbx, -1
 	xor	ecx, ecx
 	tzcnt	r11, rax
 	popcnt	rcx, rax
@@ -217,6 +228,8 @@ parse_beatmap_body:
 	cmp	r14, rbp
 	jb	.Lparse_beatmap_body_block_17
 .Lparse_beatmap_body_block_10:
+	mov ebx, 3221225472
+	add rbx, rdi
 	mov	eax, 741092396
 	mov	r8, rsi
 	mov	rdx, r12
@@ -433,7 +446,6 @@ parse_beatmap_body:
 	vmovd	xmm5, eax
 	vmovdqa	xmm7, XMMWORD PTR constant_36[rip]
 	mov	rsi, r13
-	movabs	r14, 12884901888
 	vpbroadcastd	xmm8, xmm5
 	lea	r15, slider_positive_table[rip]
 	mov	rbx, r12
@@ -444,27 +456,17 @@ parse_beatmap_body:
 .Lparse_beatmap_body_block_25:
 	mov	rsi, r11
 .Lparse_beatmap_body_block_26:
-	mov	rbp, QWORD PTR [rsi]
-	movabs	r8, 8589934592
-	mov	r10, QWORD PTR 8[rsi]
-	mov	r12d, 15
-	vmovdqa	xmm2, xmm6
-	mov	eax, DWORD PTR 0[rbp]
-	mov	QWORD PTR [r10], rdx
-	mov	ecx, eax
-	shr	rax, 8
-	and	ecx, 15
-	mov	r9, rax
-	or	r8, rcx
-	and	r9d, 15
-	lea	rcx, [rcx+rcx*4]
-	lea	rcx, [r9+rcx*2]
-	or	rcx, r14
-	cmp	al, 44
-	mov	rax, r8
-	cmovne	rax, rcx
-	shr	rax, 32
-	add	rbp, rax
+	mov rbp, QWORD PTR [rsi]
+	mov r10, QWORD PTR 8[rsi]
+	mov r12d, 15
+	vmovdqa xmm2, xmm6
+	mov QWORD PTR [r10], rdx
+	# Only the 2- or 3-byte hitsound field length is consumed here.
+	mov eax, 2
+	mov ecx, 3
+	cmp BYTE PTR 1[rbp], 44
+	cmovne eax, ecx
+	add rbp, rax
 	movzx	eax, BYTE PTR 0[rbp]
 	add	rbp, 2
 	mov	QWORD PTR 8[r10], rbp
